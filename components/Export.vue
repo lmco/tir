@@ -374,6 +374,7 @@
 <script setup lang="ts">
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from "@headlessui/vue";
 import { NessusCsvHeaders } from "~/types/nessus";
+import apiRequest from "~/utils/api";
 
 const props = defineProps({
   boundaryId: {
@@ -545,24 +546,22 @@ const nessusDownload = async () => {
 
   const url = `/api/boundaries/${encodeURIComponent(boundaryId)}/exports/nessus?${queryParams}`;
 
-  const response = await fetch(url);
+  try {
+    const response = await apiRequest({ url });
+    const blob = await response.blob();
 
-  if (!response.ok) {
-    throw new Error(`Download failed: ${response.statusText}`);
+    const downloadUrl = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `${boundaryName}_NessusExport.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  } catch (error: any) {
+    throw new Error(`Download failed: ${error.message}`);
   }
-
-  const blob = await response.blob();
-
-  const downloadUrl = window.URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = `${boundaryName}_NessusExport.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  window.URL.revokeObjectURL(downloadUrl);
 };
 
 const ppsmDownload = async () => {

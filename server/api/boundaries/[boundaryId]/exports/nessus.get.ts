@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
     throw createApiError({
       statusCode: 404,
       code: "NOT_FOUND",
-      message: "Boundary not found.",
+      message: `Boundary ${BoundaryId} not found.`,
       requestId,
     });
   }

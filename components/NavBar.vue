@@ -264,7 +264,7 @@
     <div v-else class="flex min-h-full items-center justify-center">
       <p>Loading...</p>
     </div>
-    <Notifications />
+    <Notifications class="fixed z-50" />
   </div>
 </template>
 
