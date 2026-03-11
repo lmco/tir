@@ -18,8 +18,6 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
 
   if (!response.ok) {
     const errorData = await response.json();
-    console.log(errorData);
-
     switch (errorData.data.code) {
       case "VALIDATION_ERROR":
         notificationStore.addNotification({
@@ -51,12 +49,12 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
           message: errorData.message,
         });
         break;
-      // Generic msg, show id of msg , do not auto clean notification to capture ID
       case "INTERNAL_ERROR":
         notificationStore.addNotification({
           type: "error",
           title: "Internal Error",
           message: `Request ID: ${errorData.data.requestId}`,
+          persistent: true,
         });
         break;
       case "UPSTREAM_ERROR":
@@ -64,6 +62,7 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
           type: "error",
           title: "Upstream Error",
           message: `Request ID: ${errorData.data.requestId}`,
+          persistent: true,
         });
         break;
       default:

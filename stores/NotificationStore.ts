@@ -7,6 +7,7 @@ export interface Notification {
   type: NotificationType;
   message: string;
   title?: string;
+  persistent?: boolean;
 }
 
 const DEFAULT_TIMEOUT = 3000;
@@ -32,7 +33,12 @@ export const useNotificationStore = defineStore("NotificationStore", {
       });
       this.timeout = newTimeout;
     },
-    addNotification(notification: { type: NotificationType; message: string; title?: string }) {
+    addNotification(notification: {
+      type: NotificationType;
+      message: string;
+      title?: string;
+      persistent?: boolean;
+    }) {
       const note: Notification = {
         id: Date.now(),
         ...notification,
@@ -40,14 +46,14 @@ export const useNotificationStore = defineStore("NotificationStore", {
       console.log("Adding notification to queue:", note);
       this.queue.push(note);
 
-      if (this.queue.length === 1) {
+      if (this.queue.length === 1 && note.persistent !== true) {
         this._scheduleNextRemoval();
       }
     },
     removeNotification() {
       this.queue.shift();
       this._clearScheduledTimeout();
-      if (this.queue.length > 0) {
+      if (this.queue.length > 0 && this.queue[0].persistent !== true) {
         this._scheduleNextRemoval();
       }
     },
