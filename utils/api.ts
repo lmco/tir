@@ -1,7 +1,5 @@
 import { useNotificationStore } from "~/stores/NotificationStore";
 
-const notificationStore = useNotificationStore();
-
 interface ApiRequestParams {
   url: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -15,7 +13,7 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
     headers: params.headers || {},
     body: params.body ? JSON.stringify(params.body) : undefined,
   });
-
+  const notificationStore = useNotificationStore();
   if (!response.ok) {
     const errorData = await response.json();
     switch (errorData.data.code) {
