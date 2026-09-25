@@ -162,13 +162,18 @@
               </button>
             </div>
           </div>
-          <!-- Setting up for the token creation -->
-          <div v-if="tokenEdit != true" class="grid grid-cols-3 gap-4 px-4 py-6 sm:px-6">
-            <dt class="text-sm font-medium text-black dark:text-white">Token</dt>
+          <div class="grid grid-cols-3 gap-4 px-4 py-6 sm:px-6">
+            <div>
+              <dt class="text-sm font-medium text-black dark:text-white">API Tokens</dt>
+              <p class="mt-1 text-sm leading-6 text-gray-400">
+                Tokens authenticate external API calls with your permissions.
+              </p>
+            </div>
             <dd class="mt-1 flex text-sm leading-6 text-black dark:text-gray-200 sm:col-span-2 sm:mt-0">
-              <span class="flex-grow">**********</span>
+              <span class="flex-grow"></span>
               <span class="mx-4 flex-shrink-0">
                 <button
+                  v-if="!tokenEdit"
                   type="button"
                   class="text-md font-semibold text-indigo-600 hover:text-indigo-500"
                   @click="tokenEdit = true"
@@ -177,172 +182,142 @@
                 </button>
               </span>
             </dd>
-          </div>
-          <!-- Create Token -->
-          <div v-else class="grid max-w-7xl grid-cols-1 gap-x-8 gap-y-10 px-6 py-6 md:grid-cols-3">
-            <div>
-              <h2 class="text-sm font-semibold text-black dark:text-white">Create Token</h2>
-              <p class="mt-1 text-sm leading-6 text-gray-400">Update your Token associated with your account.</p>
+            <div class="col-span-3">
+              <form v-if="tokenEdit" class="mb-8 sm:max-w-xl" @submit.prevent="generateToken">
+                <div class="grid grid-cols-1 gap-x-6 gap-y-8 sm:max-w-xl sm:grid-cols-6">
+                  <div class="col-span-full">
+                    <label for="token-name" class="block text-sm font-medium leading-6 text-black dark:text-white">
+                      Token Name
+                    </label>
+                    <input
+                      id="token-name"
+                      v-model="tokenName"
+                      required
+                      type="text"
+                      class="mt-1 block w-full rounded-md border-0 bg-black/5 py-1.5 text-black shadow-sm ring-1 ring-inset ring-black/10 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:bg-white/5 dark:text-white dark:ring-white/10 sm:text-sm sm:leading-6"
+                    />
+                  </div>
+
+                  <div class="col-span-full">
+                    <label for="token-expires" class="block text-sm font-medium leading-6 text-black dark:text-white">
+                      Expiration Date
+                    </label>
+                    <input
+                      id="token-expires"
+                      v-model="expirationDate"
+                      required
+                      type="date"
+                      class="mt-1 block w-full rounded-md border-0 bg-black/5 py-1.5 text-black shadow-sm ring-1 ring-inset ring-black/10 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:[color-scheme:dark] sm:text-sm sm:leading-6"
+                    />
+                  </div>
+                </div>
+
+                <div class="mt-8 flex">
+                  <button
+                    type="button"
+                    class="mr-4 rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+                    @click="tokenEdit = false"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+                  >
+                    Generate
+                  </button>
+                </div>
+              </form>
+              <div class="ml-16 overflow-x-auto sm:max-w-5xl">
+                <table class="min-w-full divide-y divide-gray-700">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-black dark:text-white">
+                        Token Name
+                      </th>
+                      <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-black dark:text-white">
+                        Prefix
+                      </th>
+                      <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-black dark:text-white">
+                        Expires
+                      </th>
+                      <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-black dark:text-white">
+                        Last Used
+                      </th>
+                      <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <span class="sr-only">Delete</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-800">
+                    <tr v-if="sortedTokens.length === 0">
+                      <td colspan="5" class="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">No tokens yet.</td>
+                    </tr>
+                    <tr v-for="token in sortedTokens" :key="token.id">
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-black dark:text-white">{{ token.name }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 font-mono text-sm text-black dark:text-white">
+                        {{ token.prefix }}...
+                      </td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-black dark:text-white">
+                        {{ formatTokenDate(token.expiresAt) }}
+                      </td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-black dark:text-white">
+                        {{ token.lastUsedAt ? formatTokenDate(token.lastUsedAt) : "Never" }}
+                      </td>
+                      <td class="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
+                        <button type="button" class="text-red-600 hover:text-red-900" @click="deleteTheToken(token.id)">
+                          <TrashIcon class="h-5 w-5" aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <form class="md:col-span-2" @submit.prevent="">
-              <div class="grid grid-cols-1 gap-x-6 gap-y-8 sm:max-w-xl sm:grid-cols-6">
-                <!-- <div class="col-span-full">
-                  <label for="current-password" class="block text-sm font-medium leading-6 text-white">Current password</label>
-                  <div class="mt-2">
-                    <input id="current-password" name="current_password" type="password" autocomplete="current-password" class="block w-full rounded-md border-0 bg-white/5 py-1.5 text-white shadow-sm ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm sm:leading-6" />
-                  </div>
-                </div> -->
-
-                <div class="col-span-full">
-                  <dt class="block text-sm font-medium leading-6 text-black dark:text-white">Token Name</dt>
-                  <dd class="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
-                    <input required v-model="tokenName" class="w-full rounded-lg" type="text" />
-                  </dd>
-                </div>
-
-                <div class="col-span-full">
-                  <dt class="block text-sm font-medium leading-6 text-black dark:text-white">Expiration Date</dt>
-                  <dd class="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
-                    <input required id="date" type="date" v-model="expirationDate" class="w-full rounded-lg" />
-                  </dd>
-                </div>
-                <div
-                  v-if="showPopup"
-                  class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-                >
-                  <div class="bg-gray-100 dark:bg-gray-900">
-                    <div class="mx-auto max-w-7xl">
-                      <div class="bg-gray-100 py-10 dark:bg-gray-900">
-                        <div class="px-4 sm:px-6 lg:px-8">
-                          <div class="sm:flex sm:items-center">
-                            <div class="sm:flex-auto">
-                              <h1 class="text-base font-semibold leading-6 text-gray-800 dark:text-white">
-                                Token Center
-                              </h1>
-                              <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                                Your new project access token is avaliable below, press the clipboard Icon to copy!
-                              </p>
-                              <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                                This window will only appear once! Pop up will close in 30 seconds!
-                              </p>
-                            </div>
-                          </div>
-                          <div class="mt-8 flow-root">
-                            <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                              <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                                <table class="min-w-full divide-y divide-gray-700">
-                                  <thead>
-                                    <tr>
-                                      <th
-                                        scope="col"
-                                        class="px-3 py-3.5 text-left text-sm font-semibold text-gray-800 dark:text-white"
-                                      >
-                                        Token Code
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody class="divide-y divide-gray-500">
-                                    <tr>
-                                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-800 dark:text-gray-300">
-                                        {{ myTokenName.token }}
-                                      </td>
-                                      <td class="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                                        <button
-                                          @click="copyToClipboard(myTokenName.token)"
-                                          class="text-green-600 hover:text-green-900"
-                                        >
-                                          <ClipboardDocumentCheckIcon class="h-5 w-5" aria-hidden="true" />
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                                <button
-                                  @click="showPopup = false"
-                                  class="front-bold mt-4 rounded bg-red-500 px-4 py-2 text-white hover:bg-red-700"
-                                >
-                                  Close
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="mt-8 flex">
+            <div v-if="showPopup" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+              <div class="bg-gray-100 px-4 py-10 dark:bg-gray-900 sm:px-6 lg:px-8">
+                <h1 class="text-base font-semibold leading-6 text-gray-800 dark:text-white">Token Center</h1>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                  Your new access token is available below, press the clipboard icon to copy!
+                </p>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                  This window will only appear once! The token cannot be shown again.
+                </p>
+                <table class="mt-8 min-w-full divide-y divide-gray-700">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-800 dark:text-white">
+                        Token Code
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="whitespace-nowrap px-3 py-4 font-mono text-sm text-gray-800 dark:text-gray-300">
+                        {{ myTokenName?.token }}
+                      </td>
+                      <td class="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
+                        <button
+                          type="button"
+                          class="text-green-600 hover:text-green-900"
+                          @click="copyToClipboard(myTokenName?.token)"
+                        >
+                          <ClipboardDocumentCheckIcon class="h-5 w-5" aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
                 <button
-                  class="mr-4 rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
-                  @click="tokenEdit = false"
+                  type="button"
+                  class="mt-4 rounded bg-red-500 px-4 py-2 font-bold text-white hover:bg-red-700"
+                  @click="showPopup = false"
                 >
-                  Cancel
-                </button>
-                <button
-                  class="rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
-                  @click="[generateToken()]"
-                >
-                  Generate
+                  Close
                 </button>
               </div>
-              <br />
-              <div class="bg-gray-900">
-                <div class="mx-auto max-w-7xl">
-                  <div class="bg-white py-10 shadow dark:bg-gray-800">
-                    <div class="px-4 sm:px-6 lg:px-8">
-                      <div class="sm:flex sm:items-center">
-                        <div class="sm:flex-auto">
-                          <h1 class="text-base font-semibold leading-6 text-black dark:text-white">Token</h1>
-                          <p class="mt-2 text-sm text-black dark:text-white">A list of all previous tokens</p>
-                        </div>
-                      </div>
-                      <div class="mt-8 flow-root">
-                        <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                          <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                            <table class="min-w-full divide-y divide-gray-700">
-                              <thead>
-                                <tr>
-                                  <th
-                                    scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-black dark:text-white"
-                                  >
-                                    Expiration Date
-                                  </th>
-                                  <th
-                                    scope="col"
-                                    class="px-3 py-3.5 text-left text-sm font-semibold text-black dark:text-white"
-                                  >
-                                    Token Name
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody class="divide-y divide-gray-800">
-                                <tr v-for="token in sortedTokens" :key="token.id">
-                                  <td class="whitespace-nowrap px-3 py-4 text-sm text-black dark:text-white">
-                                    {{ token.date }}
-                                  </td>
-                                  <td class="text-smtext-black whitespace-nowrap px-3 py-4 dark:text-white">
-                                    {{ token.name }}
-                                  </td>
-                                  <td class="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                                    <button @click="deleteTheToken(token.id)" class="text-red-600 hover:text-red-900">
-                                      <TrashIcon class="h-5 w-5" aria-hidden="true" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </form>
+            </div>
           </div>
           <div class="col-span-full sm:grid sm:grid-cols-3">
             <label class="px-6 py-6 text-sm font-medium text-black dark:text-white">Theme</label>
@@ -424,8 +399,8 @@ const timeZones = Intl.supportedValuesOf("timeZone");
 const newPassword = ref("");
 const confirmNewPassword = ref("");
 const tokenName = ref("");
-let showPopup = ref(false);
-let myTokenName = ref("");
+const showPopup = ref(false);
+const myTokenName = ref(null);
 const expirationDate = ref("");
 const confirmTimeZone = ref(timeZones.at(currentUser.value.TimezoneId - 1));
 /// Change User Theme Preference
@@ -494,55 +469,38 @@ async function setPassword(email, newPassword) {
   }
 }
 
-const { data: currentToken } = await useFetch("/api/users/token", {
-  method: "GET",
-  query: { UserId: currentUser.value.id },
-});
+const { data: currentToken, refresh: refreshTokens } = await useFetch("/api/users/token");
 
-// Makes the newst tokens come on top
 const sortedTokens = computed(() => {
   if (!currentToken.value) {
     return [];
   }
   return currentToken.value
     .slice()
-    .sort((a, b) => DateTime.fromISO(b.date).toMillis() - DateTime.fromISO(a.date).toMillis());
+    .sort((a, b) => DateTime.fromISO(b.creationDate).toMillis() - DateTime.fromISO(a.creationDate).toMillis());
 });
 
+const formatTokenDate = (iso) => DateTime.fromISO(iso).toLocaleString(DateTime.DATE_MED);
+
 async function generateToken() {
+  if (!tokenName.value.trim() || !expirationDate.value) {
+    return;
+  }
   try {
-    if (!tokenName || !expirationDate) {
-      console.log("TokenName and date are required!");
-      return;
-    }
-    const { data: tokenInfo, error } = await useFetch("/api/users/token/create", {
+    myTokenName.value = await $fetch("/api/users/token/create", {
       method: "POST",
       body: {
-        UserId: currentUser.value.id,
-        name: tokenName,
-        date: expirationDate,
-      },
-      headers: {
-        "Content-Type": "application/json",
+        name: tokenName.value,
+        expiresAt: expirationDate.value,
       },
     });
-
-    console.log("there should be data: ", tokenInfo);
-    if (error.value != null) {
-      console.log("Setting token Error");
-    } else {
-      changeSuccessful.value = true;
-      setTimeout(() => {
-        if (tokenName && expirationDate) {
-          location.reload();
-        }
-      }, 30000);
-
-      showPopup.value = true;
-      myTokenName = tokenInfo.value;
-    }
+    showPopup.value = true;
+    tokenEdit.value = false;
+    tokenName.value = "";
+    expirationDate.value = "";
+    await refreshTokens();
   } catch (error) {
-    console.log("token genn error", error);
+    console.error("Token creation failed", error);
   }
 }
 
