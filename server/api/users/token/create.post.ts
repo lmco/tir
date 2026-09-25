@@ -1,27 +1,50 @@
-import { Token, User } from "../../../../db/models";
-import { createToken } from "../../../utils/token";
+import { Token } from "../../../../db/models";
+import {
+  MAX_TOKEN_LIFETIME_DAYS,
+  generateToken,
+  parseExpiration,
+  requestContext,
+} from "../../../utils/token";
+import { requireSessionUser } from "../../../utils/permissionCheck";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const checkResult = await userCheck(event, undefined, undefined, undefined);
-  if (checkResult.user.id === body.UserId) {
-    const user = await User.findByPk(body.UserId);
-    const buildToken = createToken();
-    const newToken = await Token.build();
-    newToken.dataValues.token = buildToken;
-    newToken.dataValues.UserId = body.UserId;
-    newToken.dataValues.date = body.date;
-    newToken.dataValues.name = body.name;
-    newToken.save();
-    logger.info({
-      service: "Token",
-      message: `${user?.email} Successfully Created Token: ${newToken.name}`,
-    });
-    return { token: buildToken, name: body.name };
-  } else {
+  const { user } = await requireSessionUser(event);
+
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  if (!name) {
+    throw createError({ statusCode: 400, statusMessage: "Token name is required." });
+  }
+
+  const expiresAt = parseExpiration(body?.expiresAt);
+  if (!expiresAt) {
     throw createError({
-      statusCode: 401,
-      statusMessage: "Insufficient Permissions.",
+      statusCode: 400,
+      statusMessage: `Expiration must be a date within the next ${MAX_TOKEN_LIFETIME_DAYS} days.`,
     });
   }
+
+  const { token, tokenHash, prefix } = generateToken();
+  const created = await Token.create({
+    name,
+    prefix,
+    tokenHash,
+    expiresAt: expiresAt.toISO() as string,
+    UserId: user.id,
+  });
+
+  logger.notice({
+    service: "Token",
+    message: `${user.email} created token ${created.name} (${created.prefix})`,
+    expiresAt: created.expiresAt,
+    ...requestContext(event),
+  });
+
+  return {
+    id: created.id,
+    name: created.name,
+    prefix: created.prefix,
+    expiresAt: created.expiresAt,
+    token,
+  };
 });

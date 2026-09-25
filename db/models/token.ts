@@ -5,15 +5,20 @@ import {
   type InferAttributes,
   type InferCreationAttributes,
   type CreationOptional,
+  type ForeignKey,
 } from "sequelize";
+import type { User } from "./user";
 
 export class Token extends Model<InferAttributes<Token>, InferCreationAttributes<Token>> {
   declare id: CreationOptional<number>;
   declare name: string;
-  declare token: string;
-  declare date: string;
+  declare prefix: string;
+  declare tokenHash: string;
+  declare expiresAt: string;
+  declare lastUsedAt: CreationOptional<string | null>;
   declare lastUpdate: CreationOptional<string>;
   declare creationDate: CreationOptional<string>;
+  declare UserId: ForeignKey<User["id"]>;
 }
 
 Token.init(
@@ -27,13 +32,22 @@ Token.init(
       type: DataTypes.TEXT,
       allowNull: false,
     },
-    token: {
+    prefix: {
       type: DataTypes.TEXT,
       allowNull: false,
     },
-    date: {
+    tokenHash: {
       type: DataTypes.TEXT,
       allowNull: false,
+      unique: true,
+    },
+    expiresAt: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    lastUsedAt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     lastUpdate: {
       type: DataTypes.TEXT,

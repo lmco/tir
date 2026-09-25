@@ -12,6 +12,45 @@ import {
   Tier_User,
 } from "../../db/models";
 import { SessionService } from "../auth/sessionService";
+import { readBearerToken, requestContext, resolveTokenUserId } from "./token";
+
+export type AuthMethod = "session" | "token";
+
+async function resolveRequester(event: any): Promise<{ userId: number; authMethod: AuthMethod }> {
+  const rawSessionId = getCookie(event, "tirsession");
+  if (rawSessionId) {
+    const session = await new SessionService().validateSession(event);
+    if (!session?.UserId) {
+      logger.warning({
+        service: "auth",
+        message: "Rejected invalid or expired session",
+        ...requestContext(event),
+      });
+      throw createError({
+        statusCode: 401,
+        statusMessage: "Unauthorized Access - Invalid or Expired Session",
+      });
+    }
+    return { userId: session.UserId, authMethod: "session" };
+  }
+
+  const rawToken = readBearerToken(event);
+  if (rawToken) {
+    const userId = await resolveTokenUserId(rawToken, event);
+    if (!userId) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: "Unauthorized Access - Invalid or Expired Token",
+      });
+    }
+    return { userId, authMethod: "token" };
+  }
+
+  throw createError({
+    statusCode: 401,
+    statusMessage: "Unauthorized Access - No Session Found",
+  });
+}
 
 export async function userCheck(
   event: any,
@@ -19,29 +58,10 @@ export async function userCheck(
   boundaryId?: string | number,
   tierId?: string,
 ) {
-  let userId: number;
   let BoundaryRoleId = null;
   let TierRoleId = null;
   let boundary = null;
-  const rawSessionId = getCookie(event, "tirsession");
-  const sessionService = new SessionService();
-  if (rawSessionId) {
-    const session = await sessionService.validateSession(event);
-
-    if (session && session.UserId) {
-      userId = session.UserId;
-    } else {
-      throw createError({
-        statusCode: 401,
-        statusMessage: "Unauthorized Access - Invalid or Expired Session",
-      });
-    }
-  } else {
-    throw createError({
-      statusCode: 401,
-      statusMessage: "Unauthorized Access - No Session Found",
-    });
-  }
+  const { userId, authMethod } = await resolveRequester(event);
 
   const user = await User.findByPk(userId);
   if (!user) {
@@ -106,6 +126,33 @@ export async function userCheck(
     }
   }
 
-  const checkResults = { user, UserRoleId: user?.UserRoleId, BoundaryRoleId, TierRoleId };
+  const checkResults = {
+    user,
+    UserRoleId: user?.UserRoleId,
+    BoundaryRoleId,
+    TierRoleId,
+    authMethod,
+  };
   return checkResults;
+}
+
+export async function requireSessionUser(
+  event: any,
+  systemId?: string,
+  boundaryId?: string | number,
+  tierId?: string,
+) {
+  const checkResult = await userCheck(event, systemId, boundaryId, tierId);
+  if (checkResult.authMethod !== "session") {
+    logger.warning({
+      service: "Token",
+      message: `${checkResult.user.email} used an API token on a session-only endpoint ${event.path}`,
+      ...requestContext(event),
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "This action requires an interactive login. API tokens are not accepted.",
+    });
+  }
+  return checkResult;
 }
