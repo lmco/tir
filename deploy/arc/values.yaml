@@ -1,0 +1,31 @@
+# helm install tir-deploy --namespace arc-runners -f deploy/arc/values.yaml \
+#   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+githubConfigUrl: https://github.com/markcrivera/tir
+githubConfigSecret: arc-github
+runnerScaleSetName: tir-deploy
+minRunners: 0
+maxRunners: 2
+template:
+  spec:
+    serviceAccountName: tir-deployer
+    automountServiceAccountToken: true
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi

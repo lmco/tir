@@ -1,0 +1,3 @@
+# Anything that changes what runs on the deploy runner needs the infrastructure owner's review.
+/.github/ @markcrivera
+/deploy/  @markcrivera

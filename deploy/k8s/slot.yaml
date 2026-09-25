@@ -1,0 +1,173 @@
+# Rendered by render.sh, which substitutes: SLOT, DB_SLOT, IMAGE, DOMAIN, SOURCE, DEPLOYED_AT
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: tir-${SLOT}
+  namespace: tir
+  labels:
+    app.kubernetes.io/part-of: tir
+    tir.slot: ${SLOT}
+spec:
+  cluster:
+    name: tir-review-db
+  name: tir_${DB_SLOT}
+  owner: tir
+  databaseReclaimPolicy: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tir-${SLOT}
+  namespace: tir
+  labels:
+    app: tir
+    tir.slot: ${SLOT}
+  annotations:
+    tir.source: ${SOURCE}
+    tir.deployed-at: "${DEPLOYED_AT}"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tir
+      tir.slot: ${SLOT}
+  template:
+    metadata:
+      labels:
+        app: tir
+        tir.slot: ${SLOT}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tir
+          image: ${IMAGE}
+          ports:
+            - name: http
+              containerPort: 3000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - secretRef:
+                name: tir-env
+          env:
+            - name: DATABASE_HOST
+              value: tir-review-db-rw
+            - name: NUXT_DATABASE_HOST
+              value: tir-review-db-rw
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: NUXT_DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tir-review-db-app
+                  key: username
+            - name: NUXT_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tir-review-db-app
+                  key: username
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tir-review-db-app
+                  key: password
+            - name: NUXT_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tir-review-db-app
+                  key: password
+            - name: DATABASE_NAME
+              value: tir_${DB_SLOT}
+            - name: NUXT_DATABASE_NAME
+              value: tir_${DB_SLOT}
+            - name: NUXT_BASE_URL
+              value: https://${SLOT}.${DOMAIN}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-tmp
+              mountPath: /src/tmp
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tir-${SLOT}
+  namespace: tir
+  labels:
+    app: tir
+    tir.slot: ${SLOT}
+spec:
+  selector:
+    app: tir
+    tir.slot: ${SLOT}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tir-${SLOT}
+  namespace: tir
+  labels:
+    app: tir
+    tir.slot: ${SLOT}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: cloudflare
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: ${DOMAIN}
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.${DOMAIN}"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ${SLOT}.${DOMAIN}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tir-${SLOT}
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - ${SLOT}.${DOMAIN}
