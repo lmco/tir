@@ -195,3 +195,75 @@ jobs:
             echo
             echo "Image: \`$IMAGE\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Runs the deployed ref's own Playwright suite against its slot, so a PR gates on the tests
+  # it carries. That code runs with INIT_PASSWORD, so the job sits behind the same environment
+  # as deploy: automatic for authors with write access, approval on review-external otherwise.
+  test:
+    needs: [resolve, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    environment:
+      name: ${{ needs.resolve.outputs.environment }}
+    env:
+      BASE_URL: https://${{ needs.resolve.outputs.slot }}.tirtest.com
+      SOURCE: ${{ needs.resolve.outputs.repository }}@${{ needs.resolve.outputs.ref }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.resolve.outputs.repository }}
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - name: Look for end-to-end tests
+        id: e2e
+        run: |
+          if [ -f tests/e2e/playwright.config.ts ]; then
+            echo present=true >> "$GITHUB_OUTPUT"
+          else
+            echo present=false >> "$GITHUB_OUTPUT"
+            echo "::notice::No tests/e2e in $SOURCE, nothing to run"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.e2e.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install test dependencies
+        if: steps.e2e.outputs.present == 'true'
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Wait for the slot to answer
+        if: steps.e2e.outputs.present == 'true'
+        run: |
+          for i in $(seq 1 24); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/" || true)
+            echo "attempt $i: $code"
+            [ "$code" = 200 ] && exit 0
+            sleep 5
+          done
+          echo "::error::$BASE_URL did not return 200 within 2 minutes"
+          exit 1
+
+      - name: Run Playwright
+        if: steps.e2e.outputs.present == 'true'
+        env:
+          CI: "true"
+          INIT_PASSWORD: ${{ secrets.INIT_PASSWORD }}
+        run: npx playwright test -c tests/e2e
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.e2e.outputs.present == 'true'
+        with:
+          name: playwright-${{ needs.resolve.outputs.slot }}-${{ github.run_attempt }}
+          path: |
+            tests/e2e/playwright-report
+            tests/e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore
