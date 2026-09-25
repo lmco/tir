@@ -3,7 +3,7 @@ import { TirAlias } from "../../../db/models/tirAlias";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const checkResult = await userCheck(event, undefined, undefined, undefined);
+  const checkResult = await requireSessionUser(event, undefined, undefined, undefined);
   if (checkResult.UserRoleId === 1) {
     if (body) {
       const currentAliases = await TirAlias.findAll();

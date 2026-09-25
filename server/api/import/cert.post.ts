@@ -6,7 +6,7 @@ import formidable from "formidable";
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
-  const checkResult = await userCheck(event, undefined, undefined, undefined);
+  const checkResult = await requireSessionUser(event, undefined, undefined, undefined);
   if (checkResult.UserRoleId === 1) {
     console.log("Starting Upload");
 

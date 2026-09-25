@@ -13,7 +13,7 @@ const SECRET_KEY = config.secret_key as string;
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const checkResult = await userCheck(event, undefined, undefined, undefined);
+  const checkResult = await requireSessionUser(event, undefined, undefined, undefined);
 
   const isAdmin = checkResult.UserRoleId === 1;
   const isSelf = checkResult.user?.email === body.email;

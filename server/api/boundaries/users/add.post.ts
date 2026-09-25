@@ -2,7 +2,7 @@ import { User, Boundary, BoundaryInterface } from "../../../../db/models";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const checkResult = await userCheck(event, undefined, body.BoundaryId, undefined);
+  const checkResult = await requireSessionUser(event, undefined, body.BoundaryId, undefined);
   if (
     checkResult.BoundaryRoleId === 1 ||
     checkResult.BoundaryRoleId === 2 ||

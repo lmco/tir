@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (event.method === "PUT") {
+    await requireSessionUser(event);
     const body = await readBody<Partial<LogConfig>>(event);
     const updated = await Logger.savePartialAndReload(body);
     return updated;

@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (method === "PUT") {
+    await requireSessionUser(event);
     const body = await readBody<{ mode: string; html: string; title: string }>(event);
 
     const validModes = ["modal", "checkbox", "none"];

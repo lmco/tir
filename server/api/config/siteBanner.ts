@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (method === "PUT") {
+    await requireSessionUser(event);
     const body = await readBody<{ visible: boolean; html: string; color: string }>(event);
 
     if (

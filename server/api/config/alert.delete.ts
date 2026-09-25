@@ -1,7 +1,7 @@
 import { TirNotifications_User } from "../../../db/models";
 
 export default defineEventHandler(async (event) => {
-  const checkResult = await userCheck(event, undefined, undefined, undefined);
+  const checkResult = await requireSessionUser(event, undefined, undefined, undefined);
 
   const body = await readBody(event);
   const deleteNotification = await TirNotifications_User.findOne({

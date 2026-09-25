@@ -2,7 +2,7 @@ import { User, Tier, TierInterface, Tier_User } from "../../../../db/models";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const checkResult = await userCheck(event, undefined, undefined, body.TierId);
+  const checkResult = await requireSessionUser(event, undefined, undefined, body.TierId);
   if (
     checkResult.TierRoleId === 1 ||
     checkResult.TierRoleId === 2 ||

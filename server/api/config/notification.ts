@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (method === "PUT") {
+    await requireSessionUser(event);
     const body = await readBody<{ timeout: number }>(event);
     if (typeof body.timeout !== "number") {
       throw createError({ statusCode: 400, message: "Invalid timeout" });
