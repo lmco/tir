@@ -1,6 +1,6 @@
 # helm install tir-deploy --namespace arc-runners -f deploy/arc/values.yaml \
 #   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
-githubConfigUrl: https://github.com/markcrivera/tir
+githubConfigUrl: https://github.com/lmco/tir
 githubConfigSecret: arc-github
 runnerScaleSetName: tir-deploy
 minRunners: 0

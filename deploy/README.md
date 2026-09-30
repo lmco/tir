@@ -1,6 +1,6 @@
 # Deploy
 
-Review-app style deployments of any ref of a source repository (default `mitre/tir`) into
+Review-app style deployments of any ref of a source repository (default `lmco/tir`) into
 the cluster. Every deployment is a slot: `https://<slot>.tirtest.com`, a Deployment,
 Service and Ingress named `tir-<slot>` in namespace `tir`, and its own Postgres database
 `tir_<slot>` on the dedicated CNPG cluster `tir-review-db`, created declaratively through a

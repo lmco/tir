@@ -20,7 +20,7 @@ on:
       repository:
         description: Source repository
         required: true
-        default: mitre/tir
+        default: lmco/tir
   pull_request_target:
     types: [opened, synchronize, reopened, labeled]
 
