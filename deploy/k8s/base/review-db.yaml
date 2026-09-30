@@ -1,0 +1,26 @@
+# Dedicated Postgres for review slots. CNPG publishes the app role's credentials in
+# Secret tir-review-db-app (keys username, password), which the slot template reads.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: tir-review-db
+  namespace: tir
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  storage:
+    size: 10Gi
+    storageClass: ceph-rbd
+  bootstrap:
+    initdb:
+      database: tir
+      owner: tir
+      encoding: UTF8
+      localeCType: C
+      localeCollate: C
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi

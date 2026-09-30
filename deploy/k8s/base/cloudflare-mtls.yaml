@@ -1,0 +1,14 @@
+# Optional: slot routers that reference this option require a client certificate issued by
+# Cloudflare's origin-pull CA (Authenticated Origin Pulls enabled on the zone). The CA lives
+# in Secret cloudflare-origin-pull-ca (key tls.ca), built from cloudflare-origin-pull-ca.pem.
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: cloudflare-origin-pull
+  namespace: tir
+spec:
+  minVersion: VersionTLS12
+  clientAuth:
+    secretNames:
+      - cloudflare-origin-pull-ca
+    clientAuthType: RequireAndVerifyClientCert

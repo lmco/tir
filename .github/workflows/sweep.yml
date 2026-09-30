@@ -1,0 +1,32 @@
+name: Sweep stale slots
+
+# Removes slots other than main that were last deployed more than MAX_AGE_DAYS ago.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: tir-deploy
+    env:
+      MAX_AGE_DAYS: "7"
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Delete stale slots
+        run: |
+          cutoff=$(date -u -d "$MAX_AGE_DAYS days ago" +%s)
+          kubectl -n tir get deployments -l app=tir \
+            -o jsonpath='{range .items[*]}{.metadata.labels.tir\.slot} {.metadata.annotations.tir\.deployed-at}{"\n"}{end}' |
+          while read -r slot deployed; do
+            [ -n "$slot" ] && [ "$slot" != main ] || continue
+            deployed_s=$(date -u -d "${deployed:-1970-01-01T00:00:00Z}" +%s)
+            if [ "$deployed_s" -lt "$cutoff" ]; then
+              echo "removing $slot (deployed $deployed)"
+              kubectl -n tir delete deployment,service,ingress,database -l tir.slot="$slot" --ignore-not-found
+            fi
+          done

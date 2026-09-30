@@ -1,0 +1,49 @@
+name: Edge probe
+
+# Reports what an outside client gets from the origin directly and through Cloudflare.
+# Runs on a GitHub-hosted runner, touches nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Hostname to send as SNI and Host header
+        required: true
+        default: main.tirtest.com
+      ip:
+        description: Origin address to connect to directly
+        required: true
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Direct to origin IP
+        env:
+          HOST: ${{ inputs.host }}
+          IP: ${{ inputs.ip }}
+        run: |
+          echo "## Direct to $IP with SNI $HOST" >> "$GITHUB_STEP_SUMMARY"
+          if out=$(curl -sk --max-time 15 -o /tmp/body -w 'status=%{http_code} server=%header{server}' --resolve "$HOST:443:$IP" "https://$HOST/" 2>&1); then
+            title=$(grep -oiE '<title>[^<]*</title>' /tmp/body | head -1)
+            echo "$out title=$title" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "connection failed or timed out: $out" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "## Direct to $IP with no hostname" >> "$GITHUB_STEP_SUMMARY"
+          if out=$(curl -sk --max-time 15 -o /tmp/body2 -w 'status=%{http_code} server=%header{server}' "https://$IP/" 2>&1); then
+            title=$(grep -oiE '<title>[^<]*</title>' /tmp/body2 | head -1)
+            echo "$out title=$title" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "connection failed or timed out: $out" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Through Cloudflare
+        env:
+          HOST: ${{ inputs.host }}
+        run: |
+          echo "## Through Cloudflare" >> "$GITHUB_STEP_SUMMARY"
+          out=$(curl -s --max-time 20 -o /tmp/body3 -w 'status=%{http_code} server=%header{server}' "https://$HOST/" 2>&1 || true)
+          title=$(grep -oiE '<title>[^<]*</title>' /tmp/body3 | head -1)
+          echo "$out title=$title" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tir
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-runners

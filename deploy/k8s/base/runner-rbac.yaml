@@ -1,0 +1,42 @@
+# Identity for the in-cluster runner. It may manage slot resources in namespace tir and nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tir-deployer
+  namespace: arc-runners
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tir-deployer
+  namespace: tir
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["databases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tir-deployer
+  namespace: tir
+subjects:
+  - kind: ServiceAccount
+    name: tir-deployer
+    namespace: arc-runners
+roleRef:
+  kind: Role
+  name: tir-deployer
+  apiGroup: rbac.authorization.k8s.io
