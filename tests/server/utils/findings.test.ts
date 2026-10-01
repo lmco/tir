@@ -67,6 +67,17 @@ describe("findings utilities", () => {
         }),
       ).toBe("Not_Applicable");
     });
+
+    test("returns Open when all finding counts are zero", () => {
+      expect(
+        uniqueTransform({
+          Open: 0,
+          NotAFinding: 0,
+          Not_Applicable: 0,
+          Not_Reviewed: 0,
+        }),
+      ).toBe("Open");
+    });
   });
 
   describe("uniqueTransformCounts", () => {
@@ -101,6 +112,22 @@ describe("findings utilities", () => {
         Not_Reviewed: 1,
       });
     });
+
+    test("returns all zero counts when all finding counts are zero", () => {
+      expect(
+        uniqueTransformCounts({
+          Open: 0,
+          NotAFinding: 0,
+          Not_Applicable: 0,
+          Not_Reviewed: 0,
+        }),
+      ).toEqual({
+        Open: 0,
+        NotAFinding: 0,
+        Not_Applicable: 0,
+        Not_Reviewed: 0,
+      });
+    });
   });
 
   describe("addFindings", () => {
@@ -121,6 +148,29 @@ describe("findings utilities", () => {
         Not_Reviewed: 4,
       });
     });
+
+    test("accumulates findings onto an existing non-zero target", () => {
+      const target = {
+        Open: 1,
+        NotAFinding: 2,
+        Not_Applicable: 3,
+        Not_Reviewed: 4,
+      };
+
+      addFindings(target, {
+        Open: 2,
+        NotAFinding: 1,
+        Not_Applicable: 1,
+        Not_Reviewed: 3,
+      });
+
+      expect(target).toEqual({
+        Open: 3,
+        NotAFinding: 3,
+        Not_Applicable: 4,
+        Not_Reviewed: 7,
+      });
+    });
   });
 
   describe("catFromSeverity", () => {
@@ -134,6 +184,11 @@ describe("findings utilities", () => {
 
     test("maps low severity to CAT III", () => {
       expect(catFromSeverity("low")).toBe("CAT III");
+    });
+
+    test("returns an empty string for an unknown severity", () => {
+      expect(catFromSeverity("")).toBe("");
+      expect(catFromSeverity("unknown")).toBe("");
     });
   });
 });
