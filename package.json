@@ -12,7 +12,8 @@
     "postinstall": "nuxt prepare",
     "dbinit": "node db/migrate.js up && node db/seed.js up",
     "start": "node .output/server/index.mjs",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.2.0",

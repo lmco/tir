@@ -1,4 +1,4 @@
-import { describe, expect, it as test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   addFindings,
