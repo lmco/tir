@@ -33,12 +33,12 @@
               <ul role="list" class="flex flex-1 flex-col gap-y-4">
                 <!-- Status Filters -->
                 <li>
-                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Filters</div>
+                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Status</div>
                   <div
                     class="mx-auto mt-1 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500 lg:mx-0 lg:max-w-none lg:grid-cols-3"
                   ></div>
                   <ul role="list" class="-mx-2 space-y-1">
-                    <li v-for="(item, index) in filter" :key="item.name">
+                    <li v-for="(item, index) in statusFilter" :key="item.name">
                       <a
                         :href="item.href"
                         :class="[
@@ -87,9 +87,78 @@
                   </ul>
                 </li>
 
+                <li>
+                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">
+                    Severity
+                  </div>
+
+                  <div
+                    class="mx-auto mt-1 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500 lg:mx-0 lg:max-w-none lg:grid-cols-3"
+                  ></div>
+
+                  <ul role="list" class="-mx-2 space-y-1">
+                    <li v-for="(item, index) in severityFilter" :key="item.name">
+                      <a
+                        href="#"
+                        :class="[
+                          item.current
+                            ? index === 0
+                              ? 'text-red-500 hover:text-red-400'
+                              : index === 1
+                                ? 'text-orange-500 hover:text-orange-400'
+                                : 'text-yellow-500 hover:text-yellow-400'
+                            : index === 0
+                              ? 'text-gray-400 hover:text-red-500'
+                              : index === 1
+                                ? 'text-gray-400 hover:text-orange-500'
+                                : 'text-gray-400 hover:text-yellow-500',
+                          'group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6',
+                        ]"
+                        @click.prevent="
+                          [
+                            (item.current = !item.current),
+                            addFilter(item.name),
+                          ]
+                        "
+                      >
+                        <span
+                          :class="[
+                            index === 0
+                              ? 'bg-red-500'
+                              : index === 1
+                                ? 'bg-orange-500'
+                                : 'bg-yellow-500',
+                            'relative inline-flex h-2 w-2 self-center rounded-full',
+                          ]"
+                        ></span>
+
+                        {{ item.name }}
+
+                        <span
+                          v-if="item.count"
+                          class="ml-auto w-9 min-w-max whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 text-center text-xs font-medium leading-5 text-gray-800 ring-1 ring-inset ring-gray-700 dark:bg-gray-900 dark:text-white"
+                        >
+                          {{ item.count }}
+                        </span>
+                      </a>
+                    </li>
+                  </ul>
+                </li>
+
                 <!-- Check Select -->
                 <li>
-                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Checks</div>
+                  <div class="flex items-center justify-between">
+                    <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">
+                      Checks
+                    </div>
+                    <button
+                      type="button"
+                      class="text-xs text-gray-400 hover:text-indigo-500"
+                      @click="showSeverity = !showSeverity"
+                    >
+                      {{ showSeverity ? "Hide severity" : "Show severity" }}
+                    </button>
+                  </div>
                   <div
                     class="mx-auto mt-1 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500 lg:mx-0 lg:max-w-none lg:grid-cols-3"
                   ></div>
@@ -159,6 +228,12 @@
                         >
                           <LockClosedIcon class="h-5 w-5" />
                         </span>
+                        <span
+                          v-if="showSeverity"
+                          class="ml-auto rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                        >
+                          {{ stigSeverityToCat(check.effectiveSeverity) }}
+                        </span>
                       </a>
                     </li>
                   </ul>
@@ -184,7 +259,7 @@
                   </div>
                   <div class="mt-2 flex items-center text-sm text-gray-800 dark:text-gray-300">
                     <ShieldExclamationIcon class="mr-1.5 h-5 w-5 flex-shrink-0 text-gray-500" aria-hidden="true" />
-                    {{ listOfChecks[assessmentId].severity }}
+                    Severity: {{ stigSeverityToCat(listOfChecks[assessmentId].effectiveSeverity) }}
                   </div>
                   <div class="mt-2 flex items-center text-sm text-gray-800 dark:text-gray-300">
                     <DocumentMagnifyingGlassIcon
@@ -347,10 +422,11 @@ import {
 import { Listbox, ListboxButton, Disclosure, DisclosureButton, DisclosurePanel } from "@headlessui/vue";
 import { storeToRefs } from "pinia";
 import { useIdStorageStore } from "~~/stores/IdStorage";
-import { catSeverityToStig, stigSeverityToCat } from "~/utils/stig";
+import { stigSeverityToCat } from "~/utils/stig";
 
 const route = useRoute();
 const showErrorNotification = ref(false);
+const showSeverity = ref(false);
 const errorObject = ref();
 const store = useIdStorageStore();
 const { assessmentId, selectedFilterStore, BoundaryName } = storeToRefs(store);
@@ -400,7 +476,21 @@ const notReviewedCount = countByStatus("Not_Reviewed");
 const checkHasStatusOverride = (check) => {
   return check.AssessmentItems.some((item) => item.statusOverride);
 };
-const filter = [
+
+function countBySeverity(severity) {
+  return computed(
+    () =>
+      stigDatumItems.value.filter(
+        (item) => stigSeverityToCat(item.effectiveSeverity) === severity,
+      ).length,
+  );
+}
+
+const catICount = countBySeverity("CAT I");
+const catIICount = countBySeverity("CAT II");
+const catIIICount = countBySeverity("CAT III");
+
+const statusFilter = [
   {
     name: "Open",
     href: "#",
@@ -430,28 +520,72 @@ const filter = [
     current: selectedFilterStore.value.find((o) => o === "Not_Reviewed"),
   },
 ];
+
+const severityFilter = [
+  {
+    name: "CAT I",
+    count: catICount,
+    current: selectedFilterStore.value.includes("CAT I"),
+  },
+  {
+    name: "CAT II",
+    count: catIICount,
+    current: selectedFilterStore.value.includes("CAT II"),
+  },
+  {
+    name: "CAT III",
+    count: catIIICount,
+    current: selectedFilterStore.value.includes("CAT III"),
+  },
+];
 const selectedFilter = selectedFilterStore;
 
+const statusFilterNames = [
+  "Open",
+  "NotAFinding",
+  "Not_Applicable",
+  "Not_Reviewed",
+];
+
+const severityFilterNames = [
+  "CAT I",
+  "CAT II",
+  "CAT III",
+];
 function getFilterItems() {
-  if (selectedFilter.value.length === 0) {
-    return stigDatumItems.value;
-  } else {
-    const filteredList = stigDatumItems.value.filter((item) => {
-      return selectedFilter.value.includes(item.status);
-    });
-    return filteredList;
-  }
+  const selectedStatuses = selectedFilter.value.filter((filter) =>
+    statusFilterNames.includes(filter),
+  );
+
+  const selectedSeverities = selectedFilter.value.filter((filter) =>
+    severityFilterNames.includes(filter),
+  );
+
+  return stigDatumItems.value.filter((item) => {
+    const matchesStatus =
+      selectedStatuses.length === 0 ||
+      selectedStatuses.includes(item.status);
+
+    const effectiveSeverity =
+      stigSeverityToCat(item.effectiveSeverity);
+
+    const matchesSeverity =
+      selectedSeverities.length === 0 ||
+      selectedSeverities.includes(effectiveSeverity);
+
+    return matchesStatus && matchesSeverity;
+  });
 }
 
 function addFilter(name) {
-  if (selectedFilter.value.findIndex((o) => o === name) !== -1) {
-    const del = selectedFilter.value.findIndex((o) => o === name);
-    selectedFilter.value.splice(del, 1);
-    selectedFilterStore.value = selectedFilter.value;
+  const index = selectedFilter.value.findIndex((filter) => filter === name);
+
+  if (index !== -1) {
+    selectedFilter.value.splice(index, 1);
   } else {
     selectedFilter.value.push(name);
-    selectedFilterStore.value = selectedFilter.value;
   }
+  selectedFilterStore.value = selectedFilter.value;
 }
 
 const listOfChecks = computed(() => {
@@ -615,13 +749,13 @@ const overrideData = computed(() => {
   return data.AssessmentItems.map((item) => {
     // Find overrides related to the current system
     const systemOverrides = data.Overrides.filter((override) => override.systemId === item.Assessment.System.id);
-
+    const severityLock = systemOverrides.find((override) => override.type === "severity",);
     // Build the system object with the necessary properties
     return {
       id: item.id,
       systemId: item.Assessment.System.id,
       name: item.Assessment.System.name,
-      severity: stigSeverityToCat(item.severityOverride || data.severity), // default to StigData severity if no override
+      severity: severityLock?.value || stigSeverityToCat(item.severityOverride || data.severity), // default to StigData severity if no override
       status: item.statusOverride || item.status, // use statusOverride if available, otherwise use item status
       overrides: {
         id: data.id,
