@@ -24,7 +24,8 @@ npx playwright show-report tests/e2e/playwright-report
 ```
 
 Every run writes an HTML report to `tests/e2e/playwright-report` with a screenshot of each
-test's final state. Traces are kept only for failed tests, under `tests/e2e/test-results`,
-and the report links to them.
+test's final state. Failed tests also get an error context under `tests/e2e/test-results`.
+Traces are off and the login helper clears the password field right after submitting, so a
+failed login never records the password in the report, which CI publishes as an artifact.
 Tests must create whatever data they need: a review slot keeps its database between
 redeploys, so nothing may depend on another test's leftovers.
