@@ -46,7 +46,7 @@ const links = [
   { name: "General", href: "/administration/general", icon: UserCircleIcon },
   { name: "Configuration", href: "/administration/configuration", icon: WrenchIcon },
   { name: "Notifications", href: "#", icon: BellIcon },
-  { name: "Users", href: "/administration/team-members", icon: UsersIcon },
+  { name: "Users", href: "/administration/teamMembers", icon: UsersIcon },
   { name: "Logs", href: "/administration/logs", icon: DocumentDuplicateIcon },
   { name: "Security", href: "/administration/security", icon: ShieldCheckIcon },
   { name: "Auth", href: "/administration/auth", icon: IdentificationIcon },
