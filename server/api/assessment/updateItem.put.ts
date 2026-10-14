@@ -26,8 +26,12 @@ export default defineEventHandler(async (event) => {
           assessmentItem.setDataValue(key, body[key]);
         }
         assessmentItem.Assessment?.setDataValue("lastUpdate", body.lastUpdate);
-        assessmentItem.save();
-        assessmentItem.Assessment?.save();
+        await assessmentItem.save();
+
+        if (assessmentItem.Assessment) {
+          await assessmentItem.Assessment.save();
+        }
+
 
         return { error: false };
       } else {

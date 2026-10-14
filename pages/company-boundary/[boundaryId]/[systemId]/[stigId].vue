@@ -549,6 +549,7 @@ import {
 } from "@headlessui/vue";
 import { storeToRefs } from "pinia";
 import { useIdStorageStore } from "~~/stores/IdStorage";
+import { catSeverityToStig } from "~/utils/stig";
 
 const route = useRoute();
 const showErrorNotification = ref(false);
@@ -805,7 +806,7 @@ async function editAssessmentApi(editData) {
         finding_details: editFinding.value,
         comments: editComments.value,
         status: editStatus.value,
-        severityOverride: editSeverity.value,
+        severityOverride: editSeverity.value ? catSeverityToStig(editSeverity.value) : null,
         severityOverrideJustification: editJustification.value,
         BoundaryId: route.params.boundaryId,
       },
