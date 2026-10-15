@@ -638,6 +638,7 @@ export {
   StigReference,
   Theme,
   Token,
+  Session,
   CciList,
   CciItem,
   CciReference,
