@@ -6,7 +6,7 @@ import { PerfTimer } from "./perfTimer";
 
 function errorSummary(error: unknown): string {
   if (!(error instanceof Error)) {
-    return typeof error === "object" ? JSON.stringify(error) : String(error);
+    return typeof error === "string" ? error : JSON.stringify(error) ?? "unknown error";
   }
   const original = (error as { original?: { column?: string; constraint?: string; detail?: string } })
     .original;

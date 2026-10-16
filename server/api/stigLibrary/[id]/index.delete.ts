@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Op, type Transaction } from "sequelize";
 import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
 import { beginLibraryDeletion, endLibraryDeletion } from "~/server/utils/importLock";
+import { requireLibraryManager } from "~/server/utils/libraryAccess";
 import {
   Assessment,
   Boundary,
@@ -11,7 +12,7 @@ import {
   ImportJob,
   Stig,
   StigData,
-  StigLibrary,
+  type StigLibrary,
   StigLibrary_Stig,
   Stig_StigData,
   Stig_System,
@@ -30,9 +31,9 @@ function chunks<T>(items: T[]): T[][] {
   return out;
 }
 
-async function stigIdsExclusiveTo(libraryId: number, memberIds: number[]): Promise<number[]> {
+async function stigIdsExclusiveTo(libraryId: number, libraryStigIds: number[]): Promise<number[]> {
   const alsoInOtherLibraries = new Set<number>();
-  for (const batch of chunks(memberIds)) {
+  for (const batch of chunks(libraryStigIds)) {
     const rows = await StigLibrary_Stig.findAll({
       attributes: ["StigId"],
       where: { StigId: { [Op.in]: batch }, StigLibraryId: { [Op.ne]: libraryId } },
@@ -40,7 +41,7 @@ async function stigIdsExclusiveTo(libraryId: number, memberIds: number[]): Promi
     });
     for (const row of rows) alsoInOtherLibraries.add(row.StigId);
   }
-  return memberIds.filter((stigId) => !alsoInOtherLibraries.has(stigId));
+  return libraryStigIds.filter((stigId) => !alsoInOtherLibraries.has(stigId));
 }
 
 async function orphanedStigDataIds(
@@ -67,11 +68,11 @@ async function orphanedStigDataIds(
 }
 
 async function deleteStigsAndOrphanedData(
-  exclusiveIds: number[],
+  exclusiveStigIds: number[],
   transaction: Transaction,
 ): Promise<{ stigs: number; stigData: number }> {
   const candidateIds = new Set<number>();
-  for (const batch of chunks(exclusiveIds)) {
+  for (const batch of chunks(exclusiveStigIds)) {
     const rows = await Stig_StigData.findAll({
       attributes: ["StigDatumId"],
       where: { StigId: { [Op.in]: batch } },
@@ -92,11 +93,11 @@ async function deleteStigsAndOrphanedData(
     await StigData.destroy({ where: { id: { [Op.in]: batch } }, transaction });
   }
 
-  for (const batch of chunks(exclusiveIds)) {
+  for (const batch of chunks(exclusiveStigIds)) {
     await Stig.destroy({ where: { id: { [Op.in]: batch } }, transaction });
   }
 
-  return { stigs: exclusiveIds.length, stigData: orphanIds.length };
+  return { stigs: exclusiveStigIds.length, stigData: orphanIds.length };
 }
 
 async function deleteImportWorkingFiles(libraryId: number): Promise<void> {
@@ -109,21 +110,83 @@ async function deleteImportWorkingFiles(libraryId: number): Promise<void> {
   }
 }
 
+async function stigIdsInLibrary(libraryId: number): Promise<number[]> {
+  const rows = await StigLibrary_Stig.findAll({
+    attributes: ["StigId"],
+    where: { StigLibraryId: libraryId },
+    raw: true,
+  });
+  return rows.map((row) => row.StigId);
+}
+
+async function assertLibraryUnused(libraryId: number, exclusiveStigIds: number[]): Promise<void> {
+  const boundaryCount = await Boundary.count({ where: { StigLibraryId: libraryId } });
+  if (boundaryCount > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `${boundaryCount} boundar${
+        boundaryCount === 1 ? "y" : "ies"
+      } still use this library. Migrate them to another library first.`,
+    });
+  }
+  if (exclusiveStigIds.length === 0) return;
+
+  const assessmentCount = await Assessment.count({
+    where: { StigId: { [Op.in]: exclusiveStigIds } },
+  });
+  if (assessmentCount > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `${assessmentCount} assessment(s) reference STIGs that exist only in this library. Migrate or delete them first.`,
+    });
+  }
+
+  const evaluationCount = await Evaluation.count({
+    where: { StigId: { [Op.in]: exclusiveStigIds } },
+  });
+  if (evaluationCount > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `${evaluationCount} evaluation(s) reference STIGs that exist only in this library. Remove them first.`,
+    });
+  }
+}
+
+async function deleteLibraryRows(
+  library: StigLibrary,
+  exclusiveStigIds: number[],
+): Promise<{ stigs: number; stigData: number }> {
+  const transaction = await sequelize.transaction();
+  try {
+    const removed =
+      exclusiveStigIds.length > 0
+        ? await deleteStigsAndOrphanedData(exclusiveStigIds, transaction)
+        : { stigs: 0, stigData: 0 };
+    await StigLibrary_Stig.destroy({ where: { StigLibraryId: library.id }, transaction });
+    await library.destroy({ transaction });
+    await transaction.commit();
+    return removed;
+  } catch (error) {
+    await transaction.rollback();
+    logSequelizeError(error);
+    throw createError({ statusCode: 500, statusMessage: "Failed to delete the STIG library." });
+  }
+}
+
+async function removeWorkingFiles(libraryId: number): Promise<void> {
+  try {
+    await deleteImportWorkingFiles(libraryId);
+  } catch (error) {
+    logger.warning({
+      service: "Library",
+      message: `Library ${libraryId} deleted, but its working files could not be removed: ${error}`,
+    });
+  }
+}
+
 export default defineEventHandler(async (event) => {
-  const checkResult = await userCheck(event, undefined, undefined, undefined);
-  if (checkResult.UserRoleId !== 1) {
-    throw createError({ statusCode: 403, statusMessage: "Administrator role required." });
-  }
-
-  const id = Number(event.context.params?.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw createError({ statusCode: 400, statusMessage: "Invalid library id." });
-  }
-
-  const library = await StigLibrary.findByPk(id);
-  if (!library) {
-    throw createError({ statusCode: 404, statusMessage: `No STIG library with id ${id}.` });
-  }
+  const { library, user } = await requireLibraryManager(event);
+  const id = library.id;
 
   const blockedBy = await beginLibraryDeletion(`deletion of library ${id} (${library.filename})`);
   if (blockedBy) {
@@ -134,90 +197,35 @@ export default defineEventHandler(async (event) => {
   }
 
   let removed = { stigs: 0, stigData: 0 };
-  let memberIds: number[] = [];
+  let libraryStigIds: number[] = [];
   try {
-    const boundaryCount = await Boundary.count({ where: { StigLibraryId: id } });
-    if (boundaryCount > 0) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: `${boundaryCount} boundar${boundaryCount === 1 ? "y" : "ies"} still use this library. Migrate them to another library first.`,
-      });
-    }
-
-    const memberRows = await StigLibrary_Stig.findAll({
-      attributes: ["StigId"],
-      where: { StigLibraryId: id },
-      raw: true,
-    });
-    memberIds = memberRows.map((row) => row.StigId);
-    const exclusiveIds = memberIds.length > 0 ? await stigIdsExclusiveTo(id, memberIds) : [];
-
-    if (exclusiveIds.length > 0) {
-      const assessmentCount = await Assessment.count({
-        where: { StigId: { [Op.in]: exclusiveIds } },
-      });
-      if (assessmentCount > 0) {
-        throw createError({
-          statusCode: 409,
-          statusMessage: `${assessmentCount} assessment(s) reference STIGs that exist only in this library. Migrate or delete them first.`,
-        });
-      }
-      const evaluationCount = await Evaluation.count({
-        where: { StigId: { [Op.in]: exclusiveIds } },
-      });
-      if (evaluationCount > 0) {
-        throw createError({
-          statusCode: 409,
-          statusMessage: `${evaluationCount} evaluation(s) reference STIGs that exist only in this library. Remove them first.`,
-        });
-      }
-    }
-
-    const transaction = await sequelize.transaction();
-    try {
-      if (exclusiveIds.length > 0) {
-        removed = await deleteStigsAndOrphanedData(exclusiveIds, transaction);
-      }
-      await StigLibrary_Stig.destroy({ where: { StigLibraryId: id }, transaction });
-      await library.destroy({ transaction });
-      await transaction.commit();
-    } catch (error) {
-      await transaction.rollback();
-      logSequelizeError(error);
-      throw createError({ statusCode: 500, statusMessage: "Failed to delete the STIG library." });
-    }
-
+    libraryStigIds = await stigIdsInLibrary(id);
+    const exclusiveStigIds =
+      libraryStigIds.length > 0 ? await stigIdsExclusiveTo(id, libraryStigIds) : [];
+    await assertLibraryUnused(id, exclusiveStigIds);
+    removed = await deleteLibraryRows(library, exclusiveStigIds);
     await recomputeRevisionLabels(library.classification, library.libraryDate);
-
-    try {
-      await deleteImportWorkingFiles(id);
-    } catch (error) {
-      logger.warning({
-        service: "Library",
-        message: `Library ${id} deleted, but its working files could not be removed: ${error}`,
-      });
-    }
+    await removeWorkingFiles(id);
   } finally {
     endLibraryDeletion();
   }
 
-  const deletedBy = checkResult.user;
-  const userLabel = deletedBy
-    ? `${deletedBy.firstName} ${deletedBy.lastName} <${deletedBy.email}> (id ${deletedBy.id})`
+  const userLabel = user
+    ? `${user.firstName} ${user.lastName} <${user.email}> (id ${user.id})`
     : "unknown user";
 
   logger.info({
     service: "Library",
     event: "library.deleted",
     message: `STIG Library ${id} (${library.classification} ${library.libraryDate}, ${library.filename}) deleted by ${userLabel}: ${removed.stigs} exclusive STIG(s), ${removed.stigData} orphaned rule(s) removed.`,
-    userId: deletedBy?.id ?? null,
-    userEmail: deletedBy?.email ?? null,
+    userId: user?.id ?? null,
+    userEmail: user?.email ?? null,
     libraryId: id,
   });
 
   return {
     deleted: id,
-    detachedStigs: memberIds.length - removed.stigs,
+    detachedStigs: libraryStigIds.length - removed.stigs,
     removedStigs: removed.stigs,
     removedStigData: removed.stigData,
   };

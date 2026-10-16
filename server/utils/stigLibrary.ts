@@ -16,6 +16,7 @@ import { hashFile } from "./hash";
 import { createBlankAssessment } from "./assessments";
 import { recomputeAndSummarize, type RevisionSummary } from "./libraryRevisions";
 
+import type { ParseStigResults } from "./importStig";
 import type { ProgressStreamer } from "~/server/utils/progressBar";
 
 export type Classification = "U" | "FOUO" | "CUI";
@@ -33,70 +34,85 @@ export type ProcessLibraryResults = {
   revision: RevisionSummary | null;
 };
 
+type AssessmentMigration = {
+  system: System;
+  assessment: Assessment;
+  oldStig: Stig | null;
+  newStig: Stig | null;
+};
+
+function findStigInLibrary(stigid: string, stigLibraryId: number): Promise<Stig | null> {
+  return Stig.findOne({
+    where: { stigid },
+    include: [{ model: StigLibrary, where: { id: stigLibraryId }, required: true }],
+  });
+}
+
+async function* currentAssessments(
+  boundaryId: number,
+  newStigLibraryId: number,
+): AsyncGenerator<AssessmentMigration> {
+  const boundarySystems = await System.findAll({ where: { BoundaryId: boundaryId } });
+  for (const system of boundarySystems) {
+    const assessments = await Assessment.findAll({
+      where: { SystemId: system.id, succeededByAssessmentId: { [Op.is]: null } },
+    });
+    for (const assessment of assessments) {
+      const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });
+      const newStig = oldStig ? await findStigInLibrary(oldStig.stigid, newStigLibraryId) : null;
+      yield { system, assessment, oldStig, newStig };
+    }
+  }
+}
+
+async function copyCheckResults(oldAssessmentId: number, newAssessmentId: number): Promise<void> {
+  const include = [{ model: StigData, attributes: ["vuln_num", "rule_id"] }];
+  const oldChecks = await AssessmentItem.findAll({
+    where: { AssessmentId: oldAssessmentId },
+    include,
+  });
+  const newChecks = await AssessmentItem.findAll({
+    where: { AssessmentId: newAssessmentId },
+    include,
+  });
+
+  for (const check of newChecks) {
+    const matchingCheck = findMatch(check, oldChecks);
+    if (!matchingCheck) continue;
+    check.status = matchingCheck.status;
+    check.comments = matchingCheck.comments;
+    check.finding_details = matchingCheck.finding_details;
+    check.severityOverride = matchingCheck.severityOverride;
+    check.severityOverrideJustification = matchingCheck.severityOverrideJustification;
+    check.AssessmentId = newAssessmentId;
+    await check.save();
+  }
+}
+
+async function migrateAssessment(
+  boundaryId: number,
+  { system, assessment, oldStig, newStig }: AssessmentMigration,
+): Promise<void> {
+  if (oldStig) {
+    await system.removeStig(oldStig);
+  }
+  if (!newStig) return;
+
+  await system.addStig(newStig);
+  const newAssessment = await createBlankAssessment(assessment.SystemId, newStig.id);
+  await createEvaluation(boundaryId, newStig.id);
+  assessment.succeededByAssessmentId = newAssessment.id;
+  await assessment.save();
+  await copyCheckResults(assessment.id, newAssessment.id);
+}
+
 export const migrateBoundary = async (
   boundaryId: number,
   newStigLibraryId: number,
 ): Promise<{ results: string }> => {
   try {
-    const boundarySystems = await System.findAll({ where: { BoundaryId: boundaryId } });
-    for (const system of boundarySystems) {
-      const currentAssessments = await Assessment.findAll({
-        where: {
-          SystemId: system.id,
-          succeededByAssessmentId: { [Op.is]: null },
-        },
-      });
-      for (const assessment of currentAssessments) {
-        const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });
-
-        const newStig = await Stig.findOne({
-          where: { stigid: oldStig?.stigid },
-          include: [
-            {
-              model: StigLibrary,
-              where: { id: newStigLibraryId },
-              required: true,
-            },
-          ],
-        });
-
-        if (oldStig) {
-          await system.removeStig(oldStig);
-        }
-        if (!newStig) {
-          continue;
-        }
-
-        await system.addStig(newStig);
-
-        const newAssessment = await createBlankAssessment(assessment.SystemId, newStig.id);
-        await createEvaluation(boundaryId, newStig.id);
-        assessment.succeededByAssessmentId = newAssessment.id;
-        await assessment.save();
-
-        const oldChecks = await AssessmentItem.findAll({
-          where: { AssessmentId: assessment.id },
-          include: [{ model: StigData, attributes: ["vuln_num", "rule_id"] }],
-        });
-        const newChecks = await AssessmentItem.findAll({
-          where: { AssessmentId: newAssessment.id },
-          include: [{ model: StigData, attributes: ["vuln_num", "rule_id"] }],
-        });
-
-        for (const check of newChecks) {
-          const matchingCheck = findMatch(check, oldChecks);
-
-          if (matchingCheck) {
-            check.status = matchingCheck?.status;
-            check.comments = matchingCheck?.comments;
-            check.finding_details = matchingCheck?.finding_details;
-            check.severityOverride = matchingCheck?.severityOverride;
-            check.severityOverrideJustification = matchingCheck?.severityOverrideJustification;
-            check.AssessmentId = newAssessment.id;
-            await check.save();
-          }
-        }
-      }
+    for await (const migration of currentAssessments(boundaryId, newStigLibraryId)) {
+      await migrateAssessment(boundaryId, migration);
     }
     return { results: "Success" };
   } catch (error) {
@@ -112,36 +128,14 @@ export const checkBoundary = async (
   boundaryId: number,
   newStigLibraryId: number,
 ): Promise<{ results: { stigid: string; version: string }[] }> => {
-  console.log("Check Boundary Starting...");
   try {
-    const reviewStigs = [];
-    const boundarySystems = await System.findAll({ where: { BoundaryId: boundaryId } });
-    for (const system of boundarySystems) {
-      const currentAssessments = await Assessment.findAll({
-        where: {
-          SystemId: system.id,
-          succeededByAssessmentId: { [Op.is]: null },
-        },
+    const reviewStigs: { stigid: string; version: string }[] = [];
+    for await (const { oldStig, newStig } of currentAssessments(boundaryId, newStigLibraryId)) {
+      if (!oldStig || newStig) continue;
+      reviewStigs.push({
+        stigid: oldStig.stigid,
+        version: `v${oldStig.version}r${oldStig.stigRelease}`,
       });
-      for (const assessment of currentAssessments) {
-        const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });
-        const newStig = await Stig.findOne({
-          where: { stigid: oldStig?.stigid },
-          include: [
-            {
-              model: StigLibrary,
-              where: { id: newStigLibraryId },
-              required: true,
-            },
-          ],
-        });
-        if (!newStig && oldStig) {
-          reviewStigs.push({
-            stigid: oldStig.stigid,
-            version: `v${oldStig.version}r${oldStig.stigRelease}`,
-          });
-        }
-      }
     }
     return { results: reviewStigs };
   } catch (error) {
@@ -201,6 +195,110 @@ const deriveLibraryDate = (xmlFiles: string[]): string => {
   return newest.toISODate() as string;
 };
 
+async function librarySaveError(
+  error: unknown,
+  originalName: string,
+  hash: string,
+): Promise<Error> {
+  if (!(error instanceof UniqueConstraintError)) {
+    logger.error("Error saving Library Entry.", { cause: error });
+    return new Error("Error saving Library Entry.");
+  }
+  for (const element of error.errors) {
+    logger.error(`[ERROR] ${originalName} ${element.message}`);
+  }
+  const existing = await StigLibrary.findOne({ where: { hash } });
+  return new Error(
+    `This exact file was already imported as library ${existing?.id} (${existing?.filename}).`,
+    { cause: error },
+  );
+}
+
+async function saveLibraryRow(
+  originalName: string,
+  hash: string,
+  classification: Classification,
+  libraryDate: string,
+  streamer: ProgressStreamer,
+): Promise<StigLibrary> {
+  const newLibrary = StigLibrary.build({
+    filename: originalName,
+    hash,
+    classification,
+    libraryDate,
+  });
+  try {
+    await newLibrary.save();
+  } catch (error) {
+    throw await librarySaveError(error, originalName, hash);
+  }
+  streamer.status(`STIG Library Saved: ${newLibrary.dataValues.id}`);
+  streamer.saved(newLibrary.dataValues.id);
+
+  const saved = await StigLibrary.findOne({ where: { hash } });
+  if (!saved) {
+    throw new Error("Unable to load saved STIG Library.");
+  }
+  return saved;
+}
+
+function tallyParseResult(results: ProcessLibraryResults, parseResults: ParseStigResults): void {
+  if (parseResults.newStig) {
+    results.newStigCount++;
+  } else if (parseResults.newCheckCount === 0 && parseResults.updatedCheckCount === 0) {
+    results.unchangedStigCount++;
+  } else {
+    results.updatedStigCount++;
+  }
+}
+
+async function importXmlFile(
+  xmlFile: string,
+  library: StigLibrary,
+  results: ProcessLibraryResults,
+  streamer: ProgressStreamer,
+): Promise<void> {
+  const name = path.basename(xmlFile);
+  let parseResults: ParseStigResults | null = null;
+  try {
+    parseResults = await parseXmlStig(xmlFile, library);
+  } catch {
+    logger.error(`Error Parsing STIG: ${name}`);
+  }
+  if (!parseResults || parseResults.errorCheckCount > 0) {
+    results.failedStigs.push(name);
+    streamer.status(`Failed to import ${name} - see the server log.`);
+    return;
+  }
+  tallyParseResult(results, parseResults);
+}
+
+function reportRevision(
+  revision: RevisionSummary | null,
+  classification: Classification,
+  libraryDate: string,
+  streamer: ProgressStreamer,
+): void {
+  if (!revision || revision.groupSize <= 1) return;
+  streamer.status(
+    `Same-date group (${classification} ${libraryDate}) now holds ${revision.groupSize} libraries; ` +
+      `this one is "${revision.label ?? "unlabelled"}".`,
+  );
+  if (!revision.diff) return;
+
+  const { againstLibraryId, changed, added, removed } = revision.diff;
+  if (changed.length + added.length + removed.length === 0) {
+    streamer.status(
+      `Identical benchmark set to library ${againstLibraryId} - likely a duplicate upload; delete one.`,
+    );
+    return;
+  }
+  streamer.status(
+    `Differs from library ${againstLibraryId}: ` +
+      `${changed.length} updated, ${added.length} added, ${removed.length} removed.`,
+  );
+}
+
 export const processLibrary = async (
   sourceZip: string,
   baseOutputPath: string,
@@ -229,41 +327,17 @@ export const processLibrary = async (
 
   const classification = highestClassification(importedPackages.map((pkg) => pkg.classification));
   const libraryDate = deriveLibraryDate(xmlFiles);
-
-  const newLibrary = StigLibrary.build({
-    filename: originalName,
+  const newStigLibrary = await saveLibraryRow(
+    originalName,
     hash,
     classification,
     libraryDate,
-  });
-
-  try {
-    await newLibrary.save();
-    streamer.status(`STIG Library Saved: ${newLibrary.dataValues.id}`);
-    streamer.saved(newLibrary.dataValues.id);
-  } catch (error) {
-    if (error instanceof UniqueConstraintError) {
-      error.errors.forEach((element) => {
-        logger.error(`[ERROR] ${originalName} ${element.message}`);
-      });
-      const existing = await StigLibrary.findOne({ where: { hash } });
-      throw new Error(
-        `This exact file was already imported as library ${existing?.id} (${existing?.filename}).`,
-        { cause: error },
-      );
-    }
-    logger.error("Error saving Library Entry.", { cause: error });
-    throw new Error("Error saving Library Entry.");
-  }
-
-  const newStigLibrary = await StigLibrary.findOne({ where: { hash } });
-  if (!newStigLibrary) {
-    throw new Error("Unable to load saved STIG Library.");
-  }
+    streamer,
+  );
 
   fs.renameSync(sourceZip, path.join(outputDirPath, path.basename(sourceZip)));
 
-  const processLibraryResults: ProcessLibraryResults = {
+  const results: ProcessLibraryResults = {
     stigProcessed: 0,
     newStigCount: 0,
     updatedStigCount: 0,
@@ -278,63 +352,25 @@ export const processLibrary = async (
 
   streamer.status(`Extracted ${xmlFiles.length} XML files.`);
   streamer.progress(0);
-  for (let i = 0; i < xmlFiles.length; i++) {
-    const xmlFile = xmlFiles[i];
-    try {
-      const parseResults = await parseXmlStig(xmlFile, newStigLibrary);
-
-      if (parseResults.errorCheckCount > 0) {
-        processLibraryResults.failedStigs.push(path.basename(xmlFile));
-        streamer.status(`Failed to import ${path.basename(xmlFile)} - see the server log.`);
-      } else if (parseResults.newStig) {
-        processLibraryResults.newStigCount++;
-      } else if (parseResults.newCheckCount === 0 && parseResults.updatedCheckCount === 0) {
-        processLibraryResults.unchangedStigCount++;
-      } else {
-        processLibraryResults.updatedStigCount++;
-      }
-
-      streamer.status(`Processed file ${i + 1}/${xmlFiles.length}: ${path.basename(xmlFile)}`);
-      streamer.progress(Math.round(((i + 1) / xmlFiles.length) * 100));
-    } catch {
-      logger.error(`Error Parsing STIG: ${path.basename(xmlFile)}`);
-      processLibraryResults.failedStigs.push(path.basename(xmlFile));
-      streamer.status(`Failed to import ${path.basename(xmlFile)} - see the server log.`);
-    }
+  for (const [i, xmlFile] of xmlFiles.entries()) {
+    await importXmlFile(xmlFile, newStigLibrary, results, streamer);
+    streamer.status(`Processed file ${i + 1}/${xmlFiles.length}: ${path.basename(xmlFile)}`);
+    streamer.progress(Math.round(((i + 1) / xmlFiles.length) * 100));
   }
   streamer.progress(100);
-  if (processLibraryResults.failedStigs.length > 0) {
+  if (results.failedStigs.length > 0) {
     streamer.status(
-      `${processLibraryResults.failedStigs.length} STIG(s) failed to import: ${processLibraryResults.failedStigs.join(", ")}`,
+      `${results.failedStigs.length} STIG(s) failed to import: ${results.failedStigs.join(", ")}`,
     );
   }
 
   newStigLibrary.importedDate = DateTime.now().toISO();
   await newStigLibrary.save();
 
-  const revision = await recomputeAndSummarize(newStigLibrary);
-  processLibraryResults.revision = revision;
-  if (revision && revision.groupSize > 1) {
-    streamer.status(
-      `Same-date group (${classification} ${libraryDate}) now holds ${revision.groupSize} libraries; ` +
-        `this one is "${revision.label ?? "unlabelled"}".`,
-    );
-    if (revision.diff) {
-      const { againstLibraryId, changed, added, removed } = revision.diff;
-      if (changed.length + added.length + removed.length === 0) {
-        streamer.status(
-          `Identical benchmark set to library ${againstLibraryId} - likely a duplicate upload; delete one.`,
-        );
-      } else {
-        streamer.status(
-          `Differs from library ${againstLibraryId}: ` +
-            `${changed.length} updated, ${added.length} added, ${removed.length} removed.`,
-        );
-      }
-    }
-  }
+  results.revision = await recomputeAndSummarize(newStigLibrary);
+  reportRevision(results.revision, classification, libraryDate, streamer);
 
-  return processLibraryResults;
+  return results;
 };
 
 type ExtractedLibrary = {
