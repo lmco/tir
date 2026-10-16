@@ -35,85 +35,63 @@ export type ProcessLibraryResults = {
   revision: RevisionSummary | null;
 };
 
-type AssessmentMigration = {
-  system: System;
-  assessment: Assessment;
-  oldStig: Stig | null;
-  newStig: Stig | null;
-};
-
-function findStigInLibrary(stigid: string, stigLibraryId: number): Promise<Stig | null> {
-  return Stig.findOne({
-    where: { stigid },
-    include: [{ model: StigLibrary, where: { id: stigLibraryId }, required: true }],
-  });
-}
-
-async function* currentAssessments(
-  boundaryId: number,
-  newStigLibraryId: number,
-): AsyncGenerator<AssessmentMigration> {
-  const boundarySystems = await System.findAll({ where: { BoundaryId: boundaryId } });
-  for (const system of boundarySystems) {
-    const assessments = await Assessment.findAll({
-      where: { SystemId: system.id, succeededByAssessmentId: { [Op.is]: null } },
-    });
-    for (const assessment of assessments) {
-      const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });
-      const newStig = oldStig ? await findStigInLibrary(oldStig.stigid, newStigLibraryId) : null;
-      yield { system, assessment, oldStig, newStig };
-    }
-  }
-}
-
-async function copyCheckResults(oldAssessmentId: number, newAssessmentId: number): Promise<void> {
-  const include = [{ model: StigData, attributes: ["vuln_num", "rule_id"] }];
-  const oldChecks = await AssessmentItem.findAll({
-    where: { AssessmentId: oldAssessmentId },
-    include,
-  });
-  const newChecks = await AssessmentItem.findAll({
-    where: { AssessmentId: newAssessmentId },
-    include,
-  });
-
-  for (const check of newChecks) {
-    const matchingCheck = findMatch(check, oldChecks);
-    if (!matchingCheck) continue;
-    check.status = matchingCheck.status;
-    check.comments = matchingCheck.comments;
-    check.finding_details = matchingCheck.finding_details;
-    check.severityOverride = matchingCheck.severityOverride;
-    check.severityOverrideJustification = matchingCheck.severityOverrideJustification;
-    check.AssessmentId = newAssessmentId;
-    await check.save();
-  }
-}
-
-async function migrateAssessment(
-  boundaryId: number,
-  { system, assessment, oldStig, newStig }: AssessmentMigration,
-): Promise<void> {
-  if (oldStig) {
-    await system.removeStig(oldStig);
-  }
-  if (!newStig) return;
-
-  await system.addStig(newStig);
-  const newAssessment = await createBlankAssessment(assessment.SystemId, newStig.id);
-  await createEvaluation(boundaryId, newStig.id);
-  assessment.succeededByAssessmentId = newAssessment.id;
-  await assessment.save();
-  await copyCheckResults(assessment.id, newAssessment.id);
-}
-
 export const migrateBoundary = async (
   boundaryId: number,
   newStigLibraryId: number,
 ): Promise<{ results: string }> => {
   try {
-    for await (const migration of currentAssessments(boundaryId, newStigLibraryId)) {
-      await migrateAssessment(boundaryId, migration);
+    const boundarySystems = await System.findAll({ where: { BoundaryId: boundaryId } });
+    for (const system of boundarySystems) {
+      const currentAssessments = await Assessment.findAll({
+        where: {
+          SystemId: system.id,
+          succeededByAssessmentId: { [Op.is]: null },
+        },
+      });
+      for (const assessment of currentAssessments) {
+        const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });
+        const newStig = await Stig.findOne({
+          where: { stigid: oldStig.stigid },
+          include: [
+            {
+              model: StigLibrary,
+              where: { id: newStigLibraryId },
+              required: true,
+            },
+          ],
+        });
+
+        await system.removeStig(oldStig);
+        await system.addStig(newStig);
+
+        const newAssessment = await createBlankAssessment(assessment.SystemId, newStig.id);
+
+        assessment.succeededByAssessmentId = newAssessment.id;
+        await assessment.save();
+
+        const oldChecks = await AssessmentItem.findAll({
+          where: { AssessmentId: assessment.id },
+          include: [{ model: StigData, attributes: ["vuln_num", "rule_id"] }],
+        });
+        const newChecks = await AssessmentItem.findAll({
+          where: { AssessmentId: newAssessment.id },
+          include: [{ model: StigData, attributes: ["vuln_num", "rule_id"] }],
+        });
+
+        for (const check of newChecks) {
+          const matchingCheck = findMatch(check, oldChecks);
+
+          if (matchingCheck) {
+            check.status = matchingCheck?.status;
+            check.comments = matchingCheck?.comments;
+            check.finding_details = matchingCheck?.finding_details;
+            check.severityOverride = matchingCheck?.severityOverride;
+            check.severityOverrideJustification = matchingCheck?.severityOverrideJustification;
+            check.AssessmentId = newAssessment.id;
+            await check.save();
+          }
+        }
+      }
     }
     return { results: "Success" };
   } catch (error) {
@@ -121,29 +99,6 @@ export const migrateBoundary = async (
     throw createError({
       statusCode: 400,
       statusMessage: "Error with Migration",
-    });
-  }
-};
-
-export const checkBoundary = async (
-  boundaryId: number,
-  newStigLibraryId: number,
-): Promise<{ results: { stigid: string; version: string }[] }> => {
-  try {
-    const reviewStigs: { stigid: string; version: string }[] = [];
-    for await (const { oldStig, newStig } of currentAssessments(boundaryId, newStigLibraryId)) {
-      if (!oldStig || newStig) continue;
-      reviewStigs.push({
-        stigid: oldStig.stigid,
-        version: `v${oldStig.version}r${oldStig.stigRelease}`,
-      });
-    }
-    return { results: reviewStigs };
-  } catch (error) {
-    logger.error(error);
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Error with Migration Check",
     });
   }
 };
