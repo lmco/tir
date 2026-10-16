@@ -366,14 +366,12 @@ const { data: evaluation, error: queryError } = await useFetch("/api/evaluation/
   query: stigBoundary,
   key: "evaluationAPI",
 });
-if (queryError.value && queryError.value.statusCode === 404) {
+if (queryError.value?.statusCode === 404) {
   await useFetch("/api/evaluation/create", {
     method: "POST",
     body: stigBoundary,
   });
-
-  refreshNuxtData("evaluationAPI");
-  location.reload();
+  await refreshNuxtData("evaluationAPI");
 }
 
 // Filter Items
@@ -505,7 +503,7 @@ function setFields(check) {
 }
 
 // Edit API
-const editId = ref(listOfChecks.value[assessmentId.value].EvaluationItems[0].id);
+const editId = ref(listOfChecks.value[assessmentId.value]?.EvaluationItems?.[0]?.id ?? null);
 const editFinding = ref();
 const editComments = ref();
 let findingList = "";
