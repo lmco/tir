@@ -5,6 +5,7 @@ import { Op } from "sequelize";
 import { Server, MemoryLocker } from "@tus/server";
 import { FileStore } from "@tus/file-store";
 import { runImportJob } from "./runImportJob";
+import { removeImportJobFiles } from "./importJobFiles";
 import { ImportJob } from "~/db/models";
 
 let tusServer: Server | null = null;
@@ -133,6 +134,7 @@ function getTusServer(): Server {
             job?.status ?? "missing"
           }; not starting the import.`,
         });
+        await removeImportJobFiles(uid, `finished upload ${uid}`);
         uploadError(409, "Import job is no longer accepting this upload.");
       }
 

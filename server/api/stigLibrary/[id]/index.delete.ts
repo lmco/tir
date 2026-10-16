@@ -1,6 +1,4 @@
 /* eslint-disable camelcase */
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { Op, type Transaction } from "sequelize";
 import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
 import { beginLibraryDeletion, endLibraryDeletion } from "~/server/utils/importLock";
@@ -9,7 +7,6 @@ import {
   Assessment,
   Boundary,
   Evaluation,
-  ImportJob,
   Stig,
   StigData,
   type StigLibrary,
@@ -100,16 +97,6 @@ async function deleteStigsAndOrphanedData(
   return { stigs: exclusiveStigIds.length, stigData: orphanIds.length };
 }
 
-async function deleteImportWorkingFiles(libraryId: number): Promise<void> {
-  const config = useRuntimeConfig();
-  const jobs = await ImportJob.findAll({ where: { stigLibraryId: libraryId } });
-  for (const job of jobs) {
-    fs.rmSync(path.join(config.temp_folder, `${job.uid}-work`), { recursive: true, force: true });
-    fs.rmSync(path.join(config.temp_folder, job.uid), { recursive: true, force: true });
-    fs.rmSync(path.join(config.temp_folder, `${job.uid}.json`), { force: true });
-  }
-}
-
 async function stigIdsInLibrary(libraryId: number): Promise<number[]> {
   const rows = await StigLibrary_Stig.findAll({
     attributes: ["StigId"],
@@ -173,17 +160,6 @@ async function deleteLibraryRows(
   }
 }
 
-async function removeWorkingFiles(libraryId: number): Promise<void> {
-  try {
-    await deleteImportWorkingFiles(libraryId);
-  } catch (error) {
-    logger.warning({
-      service: "Library",
-      message: `Library ${libraryId} deleted, but its working files could not be removed: ${error}`,
-    });
-  }
-}
-
 export default defineEventHandler(async (event) => {
   const { library, user } = await requireLibraryManager(event);
   const id = library.id;
@@ -205,7 +181,6 @@ export default defineEventHandler(async (event) => {
     await assertLibraryUnused(id, exclusiveStigIds);
     removed = await deleteLibraryRows(library, exclusiveStigIds);
     await recomputeRevisionLabels(library.classification, library.libraryDate);
-    await removeWorkingFiles(id);
   } finally {
     endLibraryDeletion();
   }

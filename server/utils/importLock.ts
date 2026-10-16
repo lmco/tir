@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import { DateTime } from "luxon";
+import { removeImportJobFiles } from "./importJobFiles";
 import { ImportJob } from "~/db/models";
 
 export const ACTIVE_STATUSES = ["queued", "uploading", "processing"];
@@ -40,6 +41,9 @@ async function markJobsAbandoned(jobs: ImportJob[]): Promise<void> {
     service: "ImportJob",
     message: `Marked ${jobs.length} stale import job(s) as abandoned: ${jobs.map((job) => job.uid).join(", ")}`,
   });
+  for (const job of jobs) {
+    await removeImportJobFiles(job.uid, `abandoned import job ${job.uid}`);
+  }
 }
 
 export async function removeStaleAndFindBlockingJob(): Promise<ImportJob | null> {

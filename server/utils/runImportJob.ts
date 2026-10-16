@@ -1,8 +1,8 @@
 /* eslint-disable camelcase */
-import * as fs from "node:fs";
 import { DateTime } from "luxon";
 import { processLibrary } from "./stigLibrary";
 import { createJobReporter } from "./jobReporter";
+import { removeImportJobFiles } from "./importJobFiles";
 import { ImportJob, TirNotification, TirNotifications_User, User } from "~/db/models";
 
 const LIBRARY_NOTIFICATION_CATEGORY = 3;
@@ -26,7 +26,6 @@ async function notifyLibraryAvailable(createdBy: number | null, filename: string
 }
 
 export async function runImportJob(uid: string, zipArchive: string, originalFilename: string) {
-  const config = useRuntimeConfig();
   const reporter = createJobReporter(uid);
 
   try {
@@ -36,13 +35,7 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
     );
     reporter.status("Processing started...");
 
-    const results = await processLibrary(
-      zipArchive,
-      config.temp_folder,
-      uid,
-      originalFilename,
-      reporter,
-    );
+    const results = await processLibrary(zipArchive, uid, originalFilename, reporter);
 
     const failedCount = results.failedStigs.length;
     const completionMessage =
@@ -91,10 +84,6 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
       stack: error instanceof Error ? error.stack : undefined,
     });
   } finally {
-    try {
-      fs.rmSync(`${zipArchive}.json`, { force: true });
-    } catch {
-      // best-effort cleanup, don't fail the import on it
-    }
+    await removeImportJobFiles(uid, `import job ${uid}`);
   }
 }

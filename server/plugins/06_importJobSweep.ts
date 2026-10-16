@@ -2,24 +2,32 @@ import { Op } from "sequelize";
 import { DateTime } from "luxon";
 import { waitForSignal } from "../utils/startupSync";
 import { ACTIVE_STATUSES } from "../utils/importLock";
+import { removeImportJobFiles } from "../utils/importJobFiles";
 import { ImportJob } from "~/db/models";
 
 export default defineNitroPlugin(async () => {
   try {
     await waitForSignal("db");
-    const [count] = await ImportJob.update(
+    const interrupted = await ImportJob.findAll({
+      attributes: ["id", "uid"],
+      where: { status: { [Op.in]: ACTIVE_STATUSES } },
+    });
+    if (interrupted.length === 0) return;
+
+    await ImportJob.update(
       {
         status: "error",
         error: "Import interrupted by a server restart.",
         lastUpdate: DateTime.now().toISO(),
       },
-      { where: { status: { [Op.in]: ACTIVE_STATUSES } } },
+      { where: { id: { [Op.in]: interrupted.map((job) => job.id) } } },
     );
-    if (count > 0) {
-      logger.warning({
-        service: "ImportJob",
-        message: `Marked ${count} interrupted import job(s) as error on startup.`,
-      });
+    logger.warning({
+      service: "ImportJob",
+      message: `Marked ${interrupted.length} interrupted import job(s) as error on startup.`,
+    });
+    for (const job of interrupted) {
+      await removeImportJobFiles(job.uid, `interrupted import job ${job.uid}`);
     }
   } catch (error) {
     logSequelizeError(error);

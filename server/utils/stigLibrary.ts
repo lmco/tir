@@ -15,6 +15,7 @@ import {
 import { hashFile } from "./hash";
 import { createBlankAssessment } from "./assessments";
 import { recomputeAndSummarize, type RevisionSummary } from "./libraryRevisions";
+import { importJobWorkDir } from "./importJobFiles";
 
 import type { ParseStigResults } from "./importStig";
 import type { ProgressStreamer } from "~/server/utils/progressBar";
@@ -301,14 +302,11 @@ function reportRevision(
 
 export const processLibrary = async (
   sourceZip: string,
-  baseOutputPath: string,
   jobUid: string,
   originalName: string,
   streamer: ProgressStreamer,
 ): Promise<ProcessLibraryResults> => {
-  // "-work" keeps this clear of the uploaded zip itself: tus stores it at
-  // baseOutputPath/<jobUid>, because uploads are named after the job.
-  const outputDirPath = path.join(baseOutputPath, `${jobUid}-work`);
+  const outputDirPath = importJobWorkDir(jobUid);
   if (!fs.existsSync(outputDirPath)) {
     fs.mkdirSync(outputDirPath, { recursive: true });
   }
