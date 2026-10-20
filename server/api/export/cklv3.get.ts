@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   const ignoreOverrides = query.IgnoreOverrides === "true";
 
-  if (checkResult.BoundaryRoleId || query.BoundaryId !== null) {
+  if (checkResult.BoundaryRoleId) {
     const system = await System.findAll({ where: { BoundaryId: query.BoundaryId as number } });
     // Get Checklist Array
     const checklists = await convertToCKL3(system, query.SingleStigPerCkl as string, ignoreOverrides);
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     });
   } else {
     throw createError({
-      statusCode: 401,
+      statusCode: 403,
       statusMessage: "Insufficient Permissions.",
     });
   }
