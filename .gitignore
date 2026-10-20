@@ -32,3 +32,10 @@ tmp
 # internal test
 test
 server/api/localtest
+
+# Vitest reports and artifacts
+.vitest/
+
+# playwright
+tests/e2e/playwright-report
+tests/e2e/test-results
