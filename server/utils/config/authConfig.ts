@@ -97,8 +97,15 @@ async function saveProvider(
   const ops: Promise<void>[] = [];
   for (const [field, spec] of Object.entries(schema)) {
     const value = data[field];
-    if (spec.omit && !value) continue;
-    if (!spec.omit && value === undefined) continue;
+    if (spec.omit) {
+      // A stored secret only survives when the client asserts it is set. A provider
+      // added in the UI sends the flag as false, so a reused id cannot inherit one.
+      const stillSet = data[spec.setFlag ?? `${field}Set`] === true;
+      if (value) ops.push(setRawConfigValue(keyFn(field), value));
+      else if (!stillSet) ops.push(deleteRawConfigValue(keyFn(field)));
+      continue;
+    }
+    if (value === undefined) continue;
     ops.push(setRawConfigValue(keyFn(field), value));
   }
   await Promise.all(ops);

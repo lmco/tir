@@ -195,10 +195,21 @@ onMounted(async () => {
   });
 });
 
+// Ids removed in this session are never handed out again, so a replacement
+// provider cannot inherit the removed one's stored secret or typed draft.
+const retiredIds = new Set<string>();
+
 function nextId(prefix: string, existing: string[]): string {
   let i = 1;
-  while (existing.includes(`${prefix}-${i}`)) i++;
+  while (existing.includes(`${prefix}-${i}`) || retiredIds.has(`${prefix}-${i}`)) i++;
   return `${prefix}-${i}`;
+}
+
+function retireProvider(list: { id: string }[] | undefined, idx: number) {
+  const [removed] = list?.splice(idx, 1) ?? [];
+  if (!removed) return;
+  retiredIds.add(removed.id);
+  delete providerSecrets.value[removed.id];
 }
 
 function callbackUrl(): string {
@@ -231,7 +242,7 @@ function addLDAP() {
 }
 
 function removeLDAP(idx: number) {
-  authConfig.value?.ldap.splice(idx, 1);
+  retireProvider(authConfig.value?.ldap, idx);
 }
 
 function addOIDC() {
@@ -258,7 +269,7 @@ function addOIDC() {
 }
 
 function removeOIDC(idx: number) {
-  authConfig.value?.oidc.splice(idx, 1);
+  retireProvider(authConfig.value?.oidc, idx);
 }
 
 function addOAuth() {
@@ -287,7 +298,7 @@ function addOAuth() {
 }
 
 function removeOAuth(idx: number) {
-  authConfig.value?.oauth.splice(idx, 1);
+  retireProvider(authConfig.value?.oauth, idx);
 }
 
 async function saveAuthConfig() {
