@@ -1,7 +1,6 @@
 import { DataTypes } from "sequelize";
-import { sequelize } from "../umzug.js";
 
-export const up = async () => {
+export const up = async ({ context: sequelize }) => {
   const transaction = await sequelize.transaction();
   const queryInterface = sequelize.getQueryInterface();
 
@@ -71,7 +70,7 @@ export const up = async () => {
   }
 };
 
-export const down = async () => {
+export const down = async ({ context: sequelize }) => {
   const transaction = await sequelize.transaction();
   const queryInterface = sequelize.getQueryInterface();
 
