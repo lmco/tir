@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page, type Response } from "@playwright/test";
 
 export const accounts = {
   admin: { email: "admin@tir.local", role: "Admin" },
@@ -37,12 +37,27 @@ export async function submitLogin(page: Page, { email, password }: Credentials) 
   await page.locator('input[name="text"]').fill(email);
   const passwordField = page.locator('input[name="password"]');
   await passwordField.fill(password);
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/auth/login/") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Sign in" }).click();
   await passwordField.fill("");
+  return loginResponse;
+}
+
+export async function expectLoginAccepted(response: Response, email: string) {
+  const body = await response.text();
+  expect(response.status(), `login API answered ${response.status()} for ${email}: ${body}`).toBe(
+    200,
+  );
+  expect(JSON.parse(body).success, `login API rejected ${email}: ${body}`).toBe(true);
 }
 
 export async function login(page: Page, account: Account) {
-  await submitLogin(page, credentials(account));
+  const creds = credentials(account);
+  const response = await submitLogin(page, creds);
+  await expectLoginAccepted(response, creds.email);
   await page.waitForURL("**/home");
 }
 
