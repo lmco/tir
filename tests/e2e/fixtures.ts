@@ -34,8 +34,8 @@ export async function submitLogin(page: Page, { email, password }: Credentials) 
   await page.goto("/");
   await waitForHydration(page);
   await acceptLoginBanner(page);
-  await page.locator('input[name="text"]').fill(email);
-  const passwordField = page.locator('input[name="password"]');
+  await page.getByLabel("Username").fill(email);
+  const passwordField = page.getByLabel("Password");
   await passwordField.fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await passwordField.fill("");
