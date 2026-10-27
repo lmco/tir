@@ -3,6 +3,12 @@
 import os from "os";
 import { normalizeBool } from "./server/utils/env";
 
+const controlDataImportWaitTimeoutMs = Number(process.env.CONTROL_DATA_IMPORT_WAIT_TIMEOUT_MS ?? 1 * 60 * 1000);
+// const controlDataImportWaitTimeoutMs = Number(process.env.CONTROL_DATA_IMPORT_WAIT_TIMEOUT_MS ?? 30 * 60 * 1000);
+if (!Number.isSafeInteger(controlDataImportWaitTimeoutMs) || controlDataImportWaitTimeoutMs <= 0) {
+  throw new Error("CONTROL_DATA_IMPORT_WAIT_TIMEOUT_MS must be a positive integer.");
+}
+
 export default defineNuxtConfig({
   devtools: {
     enabled: true,
@@ -30,6 +36,7 @@ export default defineNuxtConfig({
     database_password: process.env.DATABASE_PASSWORD,
     database_name: process.env.DATABASE_NAME,
     temp_folder: process.env.TEMP_FOLDER || os.tmpdir(),
+    control_data_import_wait_timeout_ms: controlDataImportWaitTimeoutMs,
     secret_key: process.env.SECRET_KEY,
     oidc_secret: process.env.OIDC_SECRET,
     oidc_callback: process.env.OIDC_CALLBACK,
