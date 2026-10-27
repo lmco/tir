@@ -24,12 +24,20 @@ export async function useUploadStream(
     if (opts.uploadLengthHint != null) {
       headers["X-Upload-Length"] = String(opts.uploadLengthHint);
     }
+    console.info(`[Upload] Sending POST ${url}`, {
+      uploadLengthHint: opts.uploadLengthHint,
+      fileCount: formData.getAll("file").length,
+    });
     const response = await fetch(url, {
       method: "POST",
       body: formData,
       headers,
       credentials: opts.withCredentials ? "include" : "same-origin",
       signal: opts.signal,
+    });
+    console.info(`[Upload] Received response from ${url}`, {
+      status: response.status,
+      ok: response.ok,
     });
     if (!response.ok) throw new Error(`Upload failed with status ${response.status}`);
 
@@ -79,6 +87,7 @@ export async function useUploadStream(
       } catch {}
     }
   } catch (err) {
+    console.error(`[Upload] Request failed for ${url}`, err);
     onError?.(err);
   }
 }
