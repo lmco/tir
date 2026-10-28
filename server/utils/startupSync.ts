@@ -5,11 +5,14 @@ interface Signal {
   promise: Promise<void>;
   resolve: Resolve;
   reject: Reject;
+  isResolved: boolean;
 }
+
+export const CONTROL_DATA_IMPORT_SIGNAL = 'control:data:import'
 
 const signals = new Map<string, Signal>();
 
-export function getSignal(name: string): Signal {
+export function getSignalStatus(name: string): Signal {
   if (!signals.has(name)) {
     let resolveFn!: Resolve;
     let rejectFn!: Reject;
@@ -19,15 +22,31 @@ export function getSignal(name: string): Signal {
       rejectFn = reject;
     });
 
-    signals.set(name, { promise, resolve: resolveFn, reject: rejectFn });
+    const signal: Signal = {
+      promise,
+      resolve: function(this: Signal) {
+        this.isResolved = true;
+        resolveFn();
+      },
+      reject: function(this: Signal, e?: unknown) {
+        this.isResolved = true;
+        rejectFn(e);
+      },
+      isResolved: false
+    };
+
+    signals.set(name, signal);
   }
   return signals.get(name)!;
 }
 
 export function waitForSignal(name: string): Promise<void> {
-  return getSignal(name).promise;
+  return getSignalStatus(name).promise;
 }
 
 export function signalReady(name: string): void {
-  getSignal(name).resolve();
+  const signal = getSignalStatus(name);
+  // console.log("Before resolve:", name, signal.isResolved);
+  signal.resolve();
+  // console.log("After resolve:", name, signal.isResolved);
 }
