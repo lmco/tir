@@ -1,4 +1,4 @@
-import { CONTROL_DATA_IMPORT_SIGNAL, getSignalStatus } from "../../../utils/startupSync";
+import { CONTROL_DATA_IMPORT_SIGNAL, getSignal } from "../../../utils/startupSync";
 import { randomUUID } from "node:crypto";
 import { DateTime } from "luxon";
 import {
@@ -11,7 +11,7 @@ import { ImportJob } from "~/db/models";
 export default defineEventHandler(async (event) => {
   const checkResult = await userCheck(event, undefined, undefined, undefined);
 
-  const signal = getSignalStatus(CONTROL_DATA_IMPORT_SIGNAL);
+  const signal = getSignal(CONTROL_DATA_IMPORT_SIGNAL);
     if (!signal.isResolved) {
       console.log("STIG Library upload blocked, Control Data Import signal is busy.")
       throw createError({
