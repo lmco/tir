@@ -40,11 +40,11 @@ export default defineEventHandler(async (event) => {
     return user;
   } catch (error) {
     if (error instanceof H3Error) {
-      return error;
+      throw error;
     } else {
-      return createError({
-        statusCode: 401,
-        statusMessage: "Unauthorized Access",
+      throw createError({
+        statusCode: 500,
+        statusMessage: "Failed to retrieve current user",
       });
     }
   }
