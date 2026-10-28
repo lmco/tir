@@ -12,7 +12,7 @@ export const CONTROL_DATA_IMPORT_SIGNAL = 'control:data:import'
 
 const signals = new Map<string, Signal>();
 
-export function getSignalStatus(name: string): Signal {
+export function getSignal(name: string): Signal {
   if (!signals.has(name)) {
     let resolveFn!: Resolve;
     let rejectFn!: Reject;
@@ -41,12 +41,10 @@ export function getSignalStatus(name: string): Signal {
 }
 
 export function waitForSignal(name: string): Promise<void> {
-  return getSignalStatus(name).promise;
+  return getSignal(name).promise;
 }
 
 export function signalReady(name: string): void {
-  const signal = getSignalStatus(name);
-  // console.log("Before resolve:", name, signal.isResolved);
+  const signal = getSignal(name);
   signal.resolve();
-  // console.log("After resolve:", name, signal.isResolved);
 }
