@@ -9,7 +9,7 @@ import {
   InvalidConnectionError,
   ConnectionError,
 } from "sequelize";
-import { signalFailed, signalReady } from "../utils/startupSync";
+import { signalReady } from "../utils/startupSync";
 import { dbDebugEnabled, loadDotEnv } from "~/db/env.js";
 import { createMigrator, createSeeder, normalizeMetaTableNames } from "~/db/umzug.js";
 
@@ -192,7 +192,6 @@ export default defineNitroPlugin(async () => {
     logger.info({ service: "database", message: "Database Started." });
     signalReady("db");
   } catch (error) {
-    signalFailed("db", error);
     console.log(error);
     logger.error({ service: "database", message: error });
   }
