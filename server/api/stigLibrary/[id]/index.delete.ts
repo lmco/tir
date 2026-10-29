@@ -1,5 +1,5 @@
 /* eslint-disable camelcase */
-import { Op, type Transaction } from "sequelize";
+import { Op, Transaction } from "sequelize";
 import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
 import { beginLibraryDeletion, endLibraryDeletion } from "~/server/utils/importLock";
 import { requireLibraryManager } from "~/server/utils/libraryAccess";
@@ -158,7 +158,9 @@ async function deleteStigsAndOrphanedData(
 }
 
 async function deleteLibrary(library: StigLibrary): Promise<Removed> {
-  const transaction = await sequelize.transaction();
+  // SQLite only: take the write lock at BEGIN instead of upgrading from a
+  // read lock after the checks, which fails with SQLITE_BUSY under contention.
+  const transaction = await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE });
   try {
     const libraryStigIds = await stigIdsInLibrary(library.id, transaction);
     const exclusiveStigIds =
