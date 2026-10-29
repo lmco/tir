@@ -11,7 +11,6 @@ import { ImportJob } from "~/db/models";
 let tusServer: Server | null = null;
 
 const HEARTBEAT_THROTTLE_MS = 5_000;
-const lastHeartbeatAt = new Map<string, number>();
 
 const UPLOAD_STATUSES = ["queued", "uploading"];
 
@@ -70,14 +69,13 @@ async function uploadAlreadyExists(server: Server, id: string): Promise<boolean>
   }
 }
 
-async function recordUploadStillAlive(jobId: string): Promise<void> {
-  const now = Date.now();
-  if (now - (lastHeartbeatAt.get(jobId) ?? 0) < HEARTBEAT_THROTTLE_MS) return;
-  lastHeartbeatAt.set(jobId, now);
+async function recordUploadStillAlive(job: ImportJob): Promise<void> {
+  const last = DateTime.fromISO(job.lastUpdate);
+  if (last.isValid && DateTime.now().diff(last).toMillis() < HEARTBEAT_THROTTLE_MS) return;
 
   await ImportJob.update(
     { status: "uploading", lastUpdate: DateTime.now().toISO() },
-    { where: { uid: jobId, status: { [Op.in]: UPLOAD_STATUSES } } },
+    { where: { uid: job.uid, status: { [Op.in]: UPLOAD_STATUSES } } },
   );
 }
 
@@ -108,8 +106,8 @@ function getTusServer(): Server {
       return jobId;
     },
     async onIncomingRequest(req, uploadId) {
-      await requireOwnedUploadJob(req, uploadId);
-      await recordUploadStillAlive(uploadId);
+      const job = await requireOwnedUploadJob(req, uploadId);
+      await recordUploadStillAlive(job);
     },
     async onUploadCreate(_req, upload) {
       if (await uploadAlreadyExists(tusServer as Server, upload.id)) {
@@ -120,7 +118,6 @@ function getTusServer(): Server {
     async onUploadFinish(_req, upload) {
       const uid = upload.id;
       const filepath = upload.storage?.path;
-      lastHeartbeatAt.delete(uid);
 
       const job = await ImportJob.findOne({ where: { uid } });
       const [claimed] = await ImportJob.update(

@@ -40,13 +40,15 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
     const failedCount = results.failedStigs.length;
     const completionMessage =
       failedCount > 0
-        ? `Processing completed - ${failedCount} STIG(s) failed to import: ${results.failedStigs.join(", ")}`
+        ? `Processing completed - ${failedCount} STIG(s) failed to import: ${results.failedStigs.join(
+            ", ",
+          )}`
         : "Processing Completed!";
     reporter.status(completionMessage);
     reporter.complete(completionMessage, failedCount);
 
     const job = await ImportJob.findOne({ where: { uid } });
-    await ImportJob.update(
+    const [finished] = await ImportJob.update(
       {
         status: "done",
         percent: 100,
@@ -54,8 +56,16 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
         result: JSON.stringify(results),
         lastUpdate: DateTime.now().toISO(),
       },
-      { where: { uid } },
+      { where: { uid, status: "processing" } },
     );
+    if (finished === 0) {
+      logger.warning({
+        service: "ImportJob",
+        message: `Job ${uid} finished after it was marked ${
+          job?.status ?? "missing"
+        }; leaving that status in place.`,
+      });
+    }
 
     const importedBy = job?.createdBy
       ? await User.findByPk(job.createdBy, { attributes: ["id", "email", "firstName", "lastName"] })
