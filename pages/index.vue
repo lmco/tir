@@ -48,7 +48,13 @@
               </nav>
             </div>
           </div>
-
+          <div
+            v-if="sessionExpired"
+            role="alert"
+            class="my-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+          >
+            Your session has expired. Please sign in again.
+          </div>
           <div :class="{ 'pointer-events-none select-none opacity-50': loginDisabled }">
             <LoginForm
               :auth-method="selectedAuthMethod"
@@ -74,6 +80,9 @@ import Footer from "~/components/Footer.vue";
 import LoginBanner from "~/components/login/LoginBanner.vue";
 
 definePageMeta({ layout: false });
+
+const route = useRoute();
+const sessionExpired = computed(() => route.query.sessionExpired === "true");
 
 const { data: authStatus, error: authError } = await useFetch("/api/auth/authStatus", {
   lazy: false,
