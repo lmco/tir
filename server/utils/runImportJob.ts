@@ -47,7 +47,13 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
     reporter.status(completionMessage);
 
     const job = await ImportJob.findOne({ where: { uid } });
-    const [rowsMarkedDone] = await ImportJob.update(
+    if (job && job.status !== "processing") {
+      logger.warning({
+        service: "ImportJob",
+        message: `Job ${uid} was marked ${job.status} while it was still running; recording the completed import.`,
+      });
+    }
+    await ImportJob.update(
       {
         status: "done",
         percent: 100,
@@ -55,16 +61,8 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
         result: JSON.stringify(results),
         lastUpdate: DateTime.now().toISO(),
       },
-      { where: { uid, status: "processing" } },
+      { where: { uid } },
     );
-    if (rowsMarkedDone === 0) {
-      logger.warning({
-        service: "ImportJob",
-        message: `Job ${uid} finished after it was marked ${
-          job?.status ?? "missing"
-        }; leaving that status in place.`,
-      });
-    }
     reporter.complete(completionMessage, failedCount);
 
     const importedBy = job?.createdBy

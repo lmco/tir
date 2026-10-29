@@ -35,8 +35,8 @@ export default defineEventHandler(async (event) => {
     library.labelSource = label ? "admin" : "auto";
     library.lastUpdate = DateTime.now().toISO();
     await library.save();
-    await recomputeRevisionLabels(revisionGroupOf(library));
   });
+  await recomputeRevisionLabels(revisionGroupOf(library));
   await library.reload();
 
   return {

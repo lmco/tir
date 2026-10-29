@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { Stig, StigLibrary } from "../../db/models";
+import { withQueue } from "./queue";
 import {
   diffBenchmarks,
   sortOldestFirst,
@@ -51,14 +52,7 @@ async function loadSameDateGroup(group: RevisionGroup): Promise<GroupMember<Stig
   }));
 }
 
-export async function recomputeRevisionLabels(
-  group: RevisionGroup,
-): Promise<RevisionSummary | null> {
-  if (!group.classification || !group.libraryDate) return null;
-
-  const ordered = sortOldestFirst(await loadSameDateGroup(group));
-  if (ordered.length === 0) return null;
-
+async function assignAutoLabels(ordered: GroupMember<StigLibrary>[]): Promise<void> {
   const pinned = new Set(
     ordered.filter((m) => m.ref.labelSource !== "auto").map((m) => m.ref.revisionLabel),
   );
@@ -68,43 +62,48 @@ export async function recomputeRevisionLabels(
     let label = `rev ${next++}`;
     while (pinned.has(label)) label = `rev ${next++}`;
     if (library.revisionLabel === label) continue;
-    library.revisionLabel = label;
-    library.lastUpdate = DateTime.now().toISO();
-    await library.save();
+    // Guarded on labelSource so a pin that landed after this group was read
+    // is never overwritten with an automatic label.
+    const [updated] = await StigLibrary.update(
+      { revisionLabel: label, lastUpdate: DateTime.now().toISO() },
+      { where: { id: library.id, labelSource: "auto" } },
+    );
+    if (updated === 1) library.revisionLabel = label;
   }
+}
 
-  const newest = ordered.at(-1);
-  const previous = ordered.length > 1 ? ordered.at(-2) : null;
+function recomputeGroup(group: RevisionGroup): Promise<GroupMember<StigLibrary>[]> {
+  if (!group.classification || !group.libraryDate) return Promise.resolve([]);
+  return withQueue(revisionGroupKey(group), async () => {
+    const ordered = sortOldestFirst(await loadSameDateGroup(group));
+    await assignAutoLabels(ordered);
+    return ordered;
+  });
+}
+
+function summarize(ordered: GroupMember<StigLibrary>[], index: number): RevisionSummary {
+  const member = ordered[index];
+  const previous = index > 0 ? ordered[index - 1] : null;
   return {
-    label: newest.ref.revisionLabel,
+    label: member.ref.revisionLabel,
     groupSize: ordered.length,
     diff: previous
-      ? {
-          againstLibraryId: previous.id,
-          ...diffBenchmarks(newest.benchmarks, previous.benchmarks),
-        }
+      ? { againstLibraryId: previous.id, ...diffBenchmarks(member.benchmarks, previous.benchmarks) }
       : null,
   };
 }
 
+export async function recomputeRevisionLabels(
+  group: RevisionGroup,
+): Promise<RevisionSummary | null> {
+  const ordered = await recomputeGroup(group);
+  if (ordered.length === 0) return null;
+  return summarize(ordered, ordered.length - 1);
+}
+
 export async function recomputeAndSummarize(library: StigLibrary): Promise<RevisionSummary | null> {
-  const group = revisionGroupOf(library);
-  const recomputed = await recomputeRevisionLabels(group);
-  if (!recomputed) return null;
-
-  const ordered = sortOldestFirst(await loadSameDateGroup(group));
+  const ordered = await recomputeGroup(revisionGroupOf(library));
+  if (ordered.length === 0) return null;
   const index = ordered.findIndex((member) => member.id === library.id);
-  if (index === -1) return recomputed;
-
-  const previous = index > 0 ? ordered[index - 1] : null;
-  return {
-    label: ordered[index].ref.revisionLabel,
-    groupSize: ordered.length,
-    diff: previous
-      ? {
-          againstLibraryId: previous.id,
-          ...diffBenchmarks(ordered[index].benchmarks, previous.benchmarks),
-        }
-      : null,
-  };
+  return summarize(ordered, index === -1 ? ordered.length - 1 : index);
 }
