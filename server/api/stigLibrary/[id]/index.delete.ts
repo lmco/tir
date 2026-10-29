@@ -78,25 +78,19 @@ async function assertLibraryUnused(
   }
   if (exclusiveStigIds.length === 0) return;
 
-  const assessmentCount = await Assessment.count({
-    where: { StigId: { [Op.in]: exclusiveStigIds } },
-    transaction,
-  });
-  if (assessmentCount > 0) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: `${assessmentCount} assessment(s) reference STIGs that exist only in this library. Migrate or delete them first.`,
+  const referrers = [
+    { model: Assessment, noun: "assessment(s)", hint: "Migrate or delete them first." },
+    { model: Evaluation, noun: "evaluation(s)", hint: "Remove them first." },
+  ];
+  for (const { model, noun, hint } of referrers) {
+    const count = await model.count({
+      where: { StigId: { [Op.in]: exclusiveStigIds } },
+      transaction,
     });
-  }
-
-  const evaluationCount = await Evaluation.count({
-    where: { StigId: { [Op.in]: exclusiveStigIds } },
-    transaction,
-  });
-  if (evaluationCount > 0) {
+    if (count === 0) continue;
     throw createError({
       statusCode: 409,
-      statusMessage: `${evaluationCount} evaluation(s) reference STIGs that exist only in this library. Remove them first.`,
+      statusMessage: `${count} ${noun} reference STIGs that exist only in this library. ${hint}`,
     });
   }
 }

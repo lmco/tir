@@ -93,12 +93,8 @@ function summarize(ordered: GroupMember<StigLibrary>[], index: number): Revision
   };
 }
 
-export async function recomputeRevisionLabels(
-  group: RevisionGroup,
-): Promise<RevisionSummary | null> {
-  const ordered = await recomputeGroup(group);
-  if (ordered.length === 0) return null;
-  return summarize(ordered, ordered.length - 1);
+export async function recomputeRevisionLabels(group: RevisionGroup): Promise<void> {
+  await recomputeGroup(group);
 }
 
 export async function recomputeAndSummarize(library: StigLibrary): Promise<RevisionSummary | null> {
