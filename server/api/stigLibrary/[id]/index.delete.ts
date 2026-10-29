@@ -1,5 +1,5 @@
 /* eslint-disable camelcase */
-import { Op, Transaction } from "sequelize";
+import { ForeignKeyConstraintError, Op, Transaction } from "sequelize";
 import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
 import { beginLibraryDeletion, endLibraryDeletion } from "~/server/utils/importLock";
 import { requireLibraryManager } from "~/server/utils/libraryAccess";
@@ -9,7 +9,7 @@ import {
   Evaluation,
   Stig,
   StigData,
-  type StigLibrary,
+  StigLibrary,
   StigLibrary_Stig,
   Stig_StigData,
   Stig_System,
@@ -162,11 +162,23 @@ async function deleteLibrary(library: StigLibrary): Promise<Removed> {
   // read lock after the checks, which fails with SQLITE_BUSY under contention.
   const transaction = await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE });
   try {
+    // Postgres: FOR UPDATE on the rows a new reference would point at makes a
+    // concurrent boundary, assessment or evaluation insert wait on this
+    // transaction. SQLite ignores the lock and serializes through IMMEDIATE.
+    await StigLibrary.findByPk(library.id, { transaction, lock: transaction.LOCK.UPDATE });
     const libraryStigIds = await stigIdsInLibrary(library.id, transaction);
     const exclusiveStigIds =
       libraryStigIds.length > 0
         ? await stigIdsExclusiveTo(library.id, libraryStigIds, transaction)
         : [];
+    for (const batch of chunks(exclusiveStigIds)) {
+      await Stig.findAll({
+        where: { id: { [Op.in]: batch } },
+        attributes: ["id"],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+    }
     await assertLibraryUnused(library.id, exclusiveStigIds, transaction);
 
     const removed =
@@ -180,6 +192,13 @@ async function deleteLibrary(library: StigLibrary): Promise<Removed> {
   } catch (error) {
     await transaction.rollback();
     if (isHttpError(error)) throw error;
+    if (error instanceof ForeignKeyConstraintError) {
+      throw createError({
+        statusCode: 409,
+        statusMessage:
+          "The library or one of its STIGs was referenced while it was being deleted. Try again.",
+      });
+    }
     logSequelizeError(error);
     throw createError({ statusCode: 500, statusMessage: "Failed to delete the STIG library." });
   }
