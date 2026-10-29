@@ -19,10 +19,7 @@ export function createJobReporter(uid: string): ProgressStreamer {
 
   const persist = async (fields: Record<string, unknown>) => {
     try {
-      await ImportJob.update(
-        { ...fields, lastUpdate: DateTime.now().toISO() },
-        { where: { uid } },
-      );
+      await ImportJob.update({ ...fields, lastUpdate: DateTime.now().toISO() }, { where: { uid } });
     } catch (error) {
       logger.error({ service: "ImportJob", message: `Failed to persist job ${uid}: ${error}` });
     }

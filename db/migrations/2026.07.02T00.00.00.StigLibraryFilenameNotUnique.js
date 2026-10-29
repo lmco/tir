@@ -1,8 +1,8 @@
 import { DataTypes } from "sequelize";
 
 // Drop the UNIQUE constraint on StigLibraries.filename so it can hold the real
-// uploaded filename (which may repeat, e.g. "STIG_Library.zip"); collisions are
-// enforced in code (classification + libraryDate) plus the hash UNIQUE. Also
+// uploaded filename (which may repeat, e.g. "STIG_Library.zip"); byte-identical
+// re-uploads are still caught by the hash UNIQUE. Also
 // drop the VARCHAR length limits (TEXT) - Postgres gains nothing from them and
 // SQLite never enforced them.
 const PG_TEXT_COLUMNS = [

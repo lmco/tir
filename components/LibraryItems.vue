@@ -191,8 +191,7 @@ async function startStigUpload(file: File) {
     }));
   } catch (error) {
     const message =
-      (error as { data?: { statusMessage?: string } })?.data?.statusMessage ||
-      "Unable to start the import.";
+      (error as { data?: { statusMessage?: string } })?.data?.statusMessage || "Unable to start the import.";
     notificationStore.addNotification({ type: "error", message });
     return;
   }
@@ -248,9 +247,10 @@ async function startStigUpload(file: File) {
 
 async function resumeActive() {
   try {
-    const active = await $fetch<
-      { jobId: string; filename: string; percent: number; message: string; stigLibraryId: number | null }[]
-    >("/api/stigLibrary/jobs");
+    const active =
+      await $fetch<
+        { jobId: string; filename: string; percent: number; message: string; stigLibraryId: number | null }[]
+      >("/api/stigLibrary/jobs");
     let added = 0;
     for (const job of active) {
       if (sources.has(job.jobId)) continue;
@@ -273,9 +273,7 @@ async function resumeActive() {
 
 const pendingStigJob = computed(
   () =>
-    Object.values(jobs).find(
-      (j) => (j.phase === "uploading" || j.phase === "processing") && !j.stigLibraryId,
-    ) || null,
+    Object.values(jobs).find((j) => (j.phase === "uploading" || j.phase === "processing") && !j.stigLibraryId) || null,
 );
 const uploadingStig = computed(() => !!pendingStigJob.value);
 const barProgressStig = computed(() => pendingStigJob.value?.percent ?? 0);

@@ -39,7 +39,9 @@ async function markJobsAbandoned(jobs: ImportJob[]): Promise<void> {
   );
   logger.warning({
     service: "ImportJob",
-    message: `Marked ${jobs.length} stale import job(s) as abandoned: ${jobs.map((job) => job.uid).join(", ")}`,
+    message: `Marked ${jobs.length} stale import job(s) as abandoned: ${jobs
+      .map((job) => job.uid)
+      .join(", ")}`,
   });
   for (const job of jobs) {
     await removeImportJobFiles(job.uid, `abandoned import job ${job.uid}`);
