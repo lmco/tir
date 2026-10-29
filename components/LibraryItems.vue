@@ -182,38 +182,107 @@ function formatEta(seconds: number): string {
     .toHuman({ unitDisplay: "short" });
 }
 
-async function startStigUpload(file: File) {
-  let jobId: string;
+type ActiveJob = {
+  jobId: string;
+  filename: string;
+  status: string;
+  percent: number;
+  message: string;
+  stigLibraryId: number | null;
+  mine: boolean;
+};
+
+const interruptedUploads = new Map<string, string>();
+
+async function loadActiveJobs(): Promise<ActiveJob[]> {
   try {
-    ({ jobId } = await $fetch<{ jobId: string }>("/api/stigLibrary/jobs", {
+    return await $fetch<ActiveJob[]>("/api/stigLibrary/jobs");
+  } catch {
+    return [];
+  }
+}
+
+function activeMessage(job: ActiveJob, uploading: boolean): string {
+  if (!uploading) return job.message || "";
+  if (job.mine) return `Upload of ${job.filename} was interrupted. Select the file again to resume.`;
+  return `${job.filename} is being uploaded by another user.`;
+}
+
+function trackActive(active: ActiveJob[]) {
+  interruptedUploads.clear();
+  let added = 0;
+  for (const job of active) {
+    const uploading = job.status === "queued" || job.status === "uploading";
+    if (uploading && job.mine) interruptedUploads.set(job.jobId, job.filename);
+    if (sources.has(job.jobId)) continue;
+    upsert(job.jobId, {
+      jobId: job.jobId,
+      filename: job.filename,
+      phase: uploading ? "uploading" : "processing",
+      percent: job.percent ?? 0,
+      message: activeMessage(job, uploading),
+      stigLibraryId: job.stigLibraryId ?? null,
+    });
+    subscribe(job.jobId, job.filename);
+    added += 1;
+  }
+  if (added > 0) refreshData();
+}
+
+async function resumeActive() {
+  trackActive(await loadActiveJobs());
+}
+
+async function createJob(filename: string): Promise<string | null> {
+  try {
+    const { jobId } = await $fetch<{ jobId: string }>("/api/stigLibrary/jobs", {
       method: "POST",
-      body: { filename: file.name },
-    }));
+      body: { filename },
+    });
+    return jobId;
   } catch (error) {
     const message =
       (error as { data?: { statusMessage?: string } })?.data?.statusMessage || "Unable to start the import.";
     notificationStore.addNotification({ type: "error", message });
-    return;
+    return null;
   }
+}
+
+async function startStigUpload(file: File) {
+  trackActive(await loadActiveJobs());
+  const tus = await import("tus-js-client");
+  const uploadOptions = {
+    endpoint: "/api/uploads",
+    retryDelays: [0, 1000, 3000, 5000, 10000, 20000],
+    chunkSize: 8 * 1024 * 1024,
+    removeFingerprintOnSuccess: true,
+  };
+
+  const previousUploads = await new tus.Upload(file, uploadOptions).findPreviousUploads();
+  const resumable = previousUploads.find(
+    (previous) => previous.metadata.jobId !== undefined && interruptedUploads.has(previous.metadata.jobId),
+  );
+  for (const previous of previousUploads) {
+    if (previous !== resumable) tus.defaultOptions.urlStorage.removeUpload(previous.urlStorageKey).catch(() => {});
+  }
+
+  const jobId = resumable ? resumable.metadata.jobId : await createJob(file.name);
+  if (!jobId) return;
 
   upsert(jobId, {
     jobId,
     filename: file.name,
     phase: "uploading",
     percent: 0,
-    message: "Starting upload...",
+    message: resumable ? "Resuming upload..." : "Starting upload...",
     stigLibraryId: null,
   });
   subscribe(jobId, file.name);
 
-  const tus = await import("tus-js-client");
   let startTime: number | null = null;
   let startSent = 0;
   const upload = new tus.Upload(file, {
-    endpoint: "/api/uploads",
-    retryDelays: [0, 1000, 3000, 5000, 10000, 20000],
-    chunkSize: 8 * 1024 * 1024,
-    removeFingerprintOnSuccess: true,
+    ...uploadOptions,
     metadata: { filename: file.name, jobId },
     onProgress: (sent, total) => {
       if (!total || jobs[jobId]?.phase !== "uploading") return;
@@ -241,34 +310,9 @@ async function startStigUpload(file: File) {
       notificationStore.addNotification({ type: "error", message: "STIG library upload failed." });
     },
   });
+  if (resumable) upload.resumeFromPreviousUpload(resumable);
   activeUpload = upload;
   upload.start();
-}
-
-async function resumeActive() {
-  try {
-    const active =
-      await $fetch<
-        { jobId: string; filename: string; percent: number; message: string; stigLibraryId: number | null }[]
-      >("/api/stigLibrary/jobs");
-    let added = 0;
-    for (const job of active) {
-      if (sources.has(job.jobId)) continue;
-      upsert(job.jobId, {
-        jobId: job.jobId,
-        filename: job.filename,
-        phase: "processing",
-        percent: job.percent ?? 0,
-        message: job.message || "",
-        stigLibraryId: job.stigLibraryId ?? null,
-      });
-      subscribe(job.jobId, job.filename);
-      added += 1;
-    }
-    if (added > 0) refreshData();
-  } catch {
-    // best-effort reattach, fine to ignore
-  }
 }
 
 const pendingStigJob = computed(

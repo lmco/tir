@@ -1,10 +1,12 @@
+import { Op } from "sequelize";
+import { ACTIVE_STATUSES } from "~/server/utils/importLock";
 import { ImportJob } from "~/db/models";
 
 export default defineEventHandler(async (event) => {
-  await userCheck(event, undefined, undefined, undefined);
+  const checkResult = await userCheck(event, undefined, undefined, undefined);
 
   const jobs = await ImportJob.findAll({
-    where: { status: "processing" },
+    where: { status: { [Op.in]: ACTIVE_STATUSES } },
     order: [["id", "DESC"]],
   });
 
@@ -15,5 +17,6 @@ export default defineEventHandler(async (event) => {
     percent: job.percent,
     message: job.message,
     stigLibraryId: job.stigLibraryId,
+    mine: job.createdBy === checkResult.user.id,
   }));
 });
