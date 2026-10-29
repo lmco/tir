@@ -75,7 +75,7 @@
                     <template v-if="jobFor(library.id)">
                       <UProgress
                         :value="jobFor(library.id).percent"
-                        max="100"
+                        :max="100"
                         :color="jobFor(library.id).phase === 'done' ? 'green' : 'primary'"
                       />
                       <p class="truncate text-left text-xs text-gray-500 dark:text-gray-400">

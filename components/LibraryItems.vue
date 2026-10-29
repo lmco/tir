@@ -20,7 +20,7 @@
         class="mx-auto mt-5 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500 lg:mx-0 lg:max-w-none lg:grid-cols-3"
       ></div>
       <div v-if="uploadingStig" class="mt-2">
-        <UProgress :value="barProgressStig" max="100" />
+        <UProgress :value="barProgressStig" :max="100" />
         <p v-if="messageLoadStig" class="truncate text-xs text-gray-500 dark:text-gray-400">
           {{ messageLoadStig }}
         </p>
@@ -356,16 +356,13 @@ async function handleStigChange() {
   if (!fileInputS.value?.files?.length) return;
 
   const selectedFile = fileInputS.value.files[0];
-  const { data } = await useFetch("/api/stigLibrary/check", {
+  const check = await $fetch<{ error: boolean; message: string }>("/api/stigLibrary/check", {
     method: "POST",
     body: { filename: selectedFile.name },
   });
 
-  if (data.value?.error) {
-    notificationStore.addNotification({
-      type: "error",
-      message: data.value.message || "Invalid STIG file",
-    });
+  if (check.error) {
+    notificationStore.addNotification({ type: "error", message: check.message || "Invalid STIG file" });
     return;
   }
 
