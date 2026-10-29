@@ -161,7 +161,7 @@ const sortedLibraries = computed(() =>
   [...(StigLibraries.value ?? [])].sort(
     (a, b) =>
       (b.libraryDate ?? "").localeCompare(a.libraryDate ?? "") ||
-      (b.revisionLabel ?? "").localeCompare(a.revisionLabel ?? "") ||
+      (b.revisionLabel ?? "").localeCompare(a.revisionLabel ?? "", undefined, { numeric: true }) ||
       b.id - a.id,
   ),
 );
@@ -206,7 +206,9 @@ async function confirmDelete() {
     const result = await $fetch(`/api/stigLibrary/${library.id}`, { method: "DELETE" });
     notificationStore.addNotification({
       type: "success",
-      message: `Deleted library ${libraryName(library)}: ${result.removedStigs} STIG(s) removed, ${result.detachedStigs} shared STIG(s) kept.`,
+      message: `Deleted library ${libraryName(library)}: ${result.removedStigs} STIG(s) removed, ${
+        result.detachedStigs
+      } shared STIG(s) kept.`,
     });
     await refresh();
   } catch (error) {
@@ -231,9 +233,7 @@ function formatCompleted(importedDate) {
   if (!importedDate) return "";
   const dt = DateTime.fromISO(importedDate);
   if (!dt.isValid) return importedDate;
-  return importedDate.includes("T")
-    ? dt.toLocaleString(DateTime.DATETIME_MED)
-    : dt.toLocaleString(DateTime.DATE_MED);
+  return importedDate.includes("T") ? dt.toLocaleString(DateTime.DATETIME_MED) : dt.toLocaleString(DateTime.DATE_MED);
 }
 
 const props = defineProps({

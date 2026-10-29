@@ -43,16 +43,16 @@
                       {{ message }}
                     </p>
                     <slot />
-                    <label v-if="showInput" for="modal-dialog-input" class="sr-only">{{ title }}</label>
+                    <label v-if="showInput" :for="inputId" class="sr-only">{{ title }}</label>
                     <input
                       v-if="showInput"
-                      id="modal-dialog-input"
+                      :id="inputId"
                       ref="inputRef"
                       v-model="inputText"
                       type="text"
                       :placeholder="placeholder"
                       class="mt-3 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600 sm:text-sm"
-                      @keyup.enter="$emit('confirm', inputText)"
+                      @keyup.enter="!busy && $emit('confirm', inputText)"
                     />
                   </div>
                 </div>
@@ -104,6 +104,7 @@ const props = defineProps({
 
 defineEmits(["confirm", "cancel"]);
 
+const inputId = useId();
 const inputRef = ref(null);
 const inputText = ref("");
 
