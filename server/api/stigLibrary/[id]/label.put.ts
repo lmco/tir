@@ -26,6 +26,7 @@ export default defineEventHandler(async (event) => {
 
   const groupKey = `revision-labels:${library.classification}:${library.libraryDate}`;
   await serialized(groupKey, async () => {
+    await library.reload();
     if (label) await assertLabelFree(library, label);
     library.revisionLabel = label || null;
     library.labelSource = label ? "admin" : "auto";
