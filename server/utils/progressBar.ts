@@ -1,8 +1,16 @@
 import type { ProgressMessage } from "~/types/progress";
 
-export type ProgressStreamer = ReturnType<typeof createProgressStreamer>;
+export type ProgressStreamer = {
+  status: (value: string) => void;
+  progress: (value: number) => void;
+  saved: (value: number) => void;
+  error: (value: string) => void | Promise<void>;
+  complete: (value?: string, failed?: number) => void;
+  raw: (msg: ProgressMessage) => void;
+  finish: () => void;
+};
 
-export function createProgressStreamer(res: any) {
+export function createProgressStreamer(res: any): ProgressStreamer {
   const config = useRuntimeConfig();
   let ended = false;
 

@@ -61,7 +61,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const terminal = job.status === "done" || job.status === "error";
-  if (terminal) jobEmitter.off(uid, listener);
+  if (terminal) {
+    jobEmitter.off(uid, listener);
+    buffered.length = 0;
+  }
 
   const replayState = async () => {
     for (const msg of replayMessages(job)) {

@@ -45,10 +45,9 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
           )}`
         : "Processing Completed!";
     reporter.status(completionMessage);
-    reporter.complete(completionMessage, failedCount);
 
     const job = await ImportJob.findOne({ where: { uid } });
-    const [finished] = await ImportJob.update(
+    const [claimed] = await ImportJob.update(
       {
         status: "done",
         percent: 100,
@@ -58,7 +57,7 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
       },
       { where: { uid, status: "processing" } },
     );
-    if (finished === 0) {
+    if (claimed === 0) {
       logger.warning({
         service: "ImportJob",
         message: `Job ${uid} finished after it was marked ${
@@ -66,6 +65,7 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
         }; leaving that status in place.`,
       });
     }
+    reporter.complete(completionMessage, failedCount);
 
     const importedBy = job?.createdBy
       ? await User.findByPk(job.createdBy, { attributes: ["id", "email", "firstName", "lastName"] })
@@ -89,7 +89,7 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
     await notifyLibraryAvailable(job?.createdBy ?? null, originalFilename);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    reporter.error(`Error occurred during processing: ${message}`);
+    await reporter.error(`Error occurred during processing: ${message}`);
     logger.error(`Failed STIG Library Processing: ${originalFilename} - ${message}`, {
       stack: error instanceof Error ? error.stack : undefined,
     });

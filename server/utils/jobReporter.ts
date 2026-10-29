@@ -54,9 +54,9 @@ export function createJobReporter(uid: string): ProgressStreamer {
       emit({ type: "saved", value });
       persist({ stigLibraryId: value }).catch(() => {});
     },
-    error: (value: string) => {
+    error: async (value: string) => {
+      await persist({ status: "error", error: value });
       emit({ type: "error", value });
-      persist({ status: "error", error: value }).catch(() => {});
     },
     complete: (value?: string, failed?: number) => {
       emit({ type: "complete", value, failed });
