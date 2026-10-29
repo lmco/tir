@@ -86,19 +86,15 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { Duration } from "luxon";
 import { useUploadStream } from "~/composables/useUploadStream";
 import type { ProgressMessage } from "~/types/progress";
-import { isUploadStatus, type ImportJobStatus } from "~/types/importJob";
+import { isUploadStatus, type ImportJobSummary } from "~/types/importJob";
 
 const notificationStore = useNotificationStore();
 const alertsStore = useAlertsStore();
 
 type Phase = "uploading" | "processing" | "done" | "error";
-interface ImportJobView {
-  jobId: string;
-  filename: string;
+interface ImportJobView extends Pick<ImportJobSummary, "jobId" | "filename" | "percent" | "stigLibraryId"> {
   phase: Phase;
-  percent: number;
   message: string;
-  stigLibraryId: number | null;
 }
 
 // client progress state is ephemeral - the server (ImportJob + SSE replay) is authoritative
@@ -184,15 +180,7 @@ function formatEta(seconds: number): string {
     .toHuman({ unitDisplay: "short" });
 }
 
-type ActiveJob = {
-  jobId: string;
-  filename: string;
-  status: ImportJobStatus;
-  percent: number;
-  message: string;
-  stigLibraryId: number | null;
-  mine: boolean;
-};
+type ActiveJob = ImportJobSummary;
 
 const interruptedUploads = new Set<string>();
 
@@ -269,12 +257,15 @@ async function startStigUpload(file: File) {
     removeFingerprintOnSuccess: true,
   };
 
-  const previousUploads = await new tus.Upload(file, uploadOptions).findPreviousUploads();
+  const probe = new tus.Upload(file, uploadOptions);
+  const previousUploads = await probe.findPreviousUploads();
   const resumable = previousUploads.find(
     (previous) => previous.metadata.jobId !== undefined && interruptedUploads.has(previous.metadata.jobId),
   );
+  const forget = (previous: (typeof previousUploads)[number]) =>
+    probe.options.urlStorage?.removeUpload(previous.urlStorageKey).catch(() => {});
   for (const previous of previousUploads) {
-    if (previous !== resumable) tus.defaultOptions.urlStorage.removeUpload(previous.urlStorageKey).catch(() => {});
+    if (previous !== resumable) forget(previous);
   }
 
   const jobId = resumable ? resumable.metadata.jobId : await createJob(file.name);

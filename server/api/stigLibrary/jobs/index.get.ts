@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { ACTIVE_STATUSES } from "~/types/importJob";
+import { ACTIVE_STATUSES, type ImportJobSummary } from "~/types/importJob";
 import { ImportJob } from "~/db/models";
 
 export default defineEventHandler(async (event) => {
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     order: [["id", "DESC"]],
   });
 
-  return jobs.map((job) => ({
+  return jobs.map<ImportJobSummary>((job) => ({
     jobId: job.uid,
     filename: job.filename,
     status: job.status,

@@ -7,9 +7,7 @@ import { Stig, StigIdent, StigLibrary, StigReference, StigResponsibility } from 
 
 export type ParseStigResults = {
   newStig: boolean;
-  checksProcessed: number;
   newCheckCount: number;
-  unchangedCheckCount: number;
   errorCheckCount: number;
 };
 
@@ -21,9 +19,7 @@ export async function parseXmlStig(
 
   const parseResults: ParseStigResults = {
     newStig: false,
-    checksProcessed: 0,
     newCheckCount: 0,
-    unchangedCheckCount: 0,
     errorCheckCount: 0,
   };
 
@@ -85,10 +81,8 @@ export async function parseXmlStig(
         stigImportTransaction,
         perfTimer,
       );
-      parseResults.checksProcessed++;
       if (error) parseResults.errorCheckCount++;
       else if (ruleCreated) parseResults.newCheckCount++;
-      else parseResults.unchangedCheckCount++;
     }
 
     await stigImportTransaction.commit();

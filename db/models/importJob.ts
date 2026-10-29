@@ -6,6 +6,7 @@ import {
   type InferCreationAttributes,
   type CreationOptional,
 } from "sequelize";
+import type { ImportJobStatus } from "~/types/importJob";
 
 export class ImportJob extends Model<
   InferAttributes<ImportJob>,
@@ -14,7 +15,7 @@ export class ImportJob extends Model<
   declare id: CreationOptional<number>;
   declare uid: string;
   declare filename: string;
-  declare status: CreationOptional<string>;
+  declare status: CreationOptional<ImportJobStatus>;
   declare percent: CreationOptional<number>;
   declare message: CreationOptional<string | null>;
   declare result: CreationOptional<string | null>;

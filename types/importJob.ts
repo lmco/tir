@@ -5,6 +5,16 @@ export const TERMINAL_STATUSES = ["done", "error"] as const;
 
 export type ImportJobStatus = (typeof ACTIVE_STATUSES)[number] | (typeof TERMINAL_STATUSES)[number];
 
+export type ImportJobSummary = {
+  jobId: string;
+  filename: string;
+  status: ImportJobStatus;
+  percent: number;
+  message: string | null;
+  stigLibraryId: number | null;
+  mine: boolean;
+};
+
 export function isUploadStatus(status: string): boolean {
   return (UPLOAD_STATUSES as readonly string[]).includes(status);
 }
