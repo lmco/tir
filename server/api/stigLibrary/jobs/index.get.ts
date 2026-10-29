@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { ACTIVE_STATUSES } from "~/server/utils/importLock";
+import { ACTIVE_STATUSES } from "~/types/importJob";
 import { ImportJob } from "~/db/models";
 
 export default defineEventHandler(async (event) => {

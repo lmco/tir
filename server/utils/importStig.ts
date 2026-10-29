@@ -76,7 +76,7 @@ export async function parseXmlStig(
     const currentStigIdents = await StigIdent.findAll();
 
     for (const stigData of groupArray) {
-      const { created, error } = await parseStigData(
+      const { created: ruleCreated, error } = await parseStigData(
         stigData,
         newStig,
         currentStigResponsibilities,
@@ -87,7 +87,7 @@ export async function parseXmlStig(
       );
       parseResults.checksProcessed++;
       if (error) parseResults.errorCheckCount++;
-      else if (created) parseResults.newCheckCount++;
+      else if (ruleCreated) parseResults.newCheckCount++;
       else parseResults.unchangedCheckCount++;
     }
 

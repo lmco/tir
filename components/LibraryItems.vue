@@ -86,6 +86,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { Duration } from "luxon";
 import { useUploadStream } from "~/composables/useUploadStream";
 import type { ProgressMessage } from "~/types/progress";
+import { isUploadStatus } from "~/types/importJob";
 
 const notificationStore = useNotificationStore();
 const alertsStore = useAlertsStore();
@@ -133,6 +134,7 @@ function applyMessage(jobId: string, msg: ProgressMessage) {
       refreshData();
       break;
     case "complete": {
+      if (jobs[jobId]?.phase === "done") break;
       const failed = msg.failed ?? 0;
       upsert(jobId, { phase: "done", percent: 100, message: msg.value || "Processing complete!" });
       closeSource(jobId);
@@ -192,7 +194,7 @@ type ActiveJob = {
   mine: boolean;
 };
 
-const interruptedUploads = new Map<string, string>();
+const interruptedUploads = new Set<string>();
 
 async function loadActiveJobs(): Promise<ActiveJob[] | null> {
   try {
@@ -212,8 +214,8 @@ function trackActive(active: ActiveJob[]) {
   interruptedUploads.clear();
   let added = 0;
   for (const job of active) {
-    const uploading = job.status === "queued" || job.status === "uploading";
-    if (uploading && job.mine) interruptedUploads.set(job.jobId, job.filename);
+    const uploading = isUploadStatus(job.status);
+    if (uploading && job.mine) interruptedUploads.add(job.jobId);
     if (sources.has(job.jobId)) continue;
     upsert(job.jobId, {
       jobId: job.jobId,

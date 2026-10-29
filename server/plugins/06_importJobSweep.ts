@@ -1,9 +1,9 @@
 import { Op } from "sequelize";
 import { DateTime } from "luxon";
 import { waitForSignal } from "../utils/startupSync";
-import { ACTIVE_STATUSES } from "../utils/importLock";
 import { removeImportJobFiles } from "../utils/importJobFiles";
 import { ImportJob } from "~/db/models";
+import { ACTIVE_STATUSES } from "~/types/importJob";
 
 export default defineNitroPlugin(async () => {
   try {

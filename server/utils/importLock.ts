@@ -2,8 +2,7 @@ import { Op } from "sequelize";
 import { DateTime } from "luxon";
 import { removeImportJobFiles } from "./importJobFiles";
 import { ImportJob } from "~/db/models";
-
-export const ACTIVE_STATUSES = ["queued", "uploading", "processing"];
+import { ACTIVE_STATUSES } from "~/types/importJob";
 
 const UPLOAD_HEARTBEAT_LOST_MS = 2 * 60_000;
 const PROCESSING_SILENCE_LIMIT_MS = 15 * 60_000;

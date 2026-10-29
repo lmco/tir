@@ -7,12 +7,11 @@ import { FileStore } from "@tus/file-store";
 import { runImportJob } from "./runImportJob";
 import { removeImportJobFiles } from "./importJobFiles";
 import { ImportJob } from "~/db/models";
+import { UPLOAD_STATUSES, isUploadStatus } from "~/types/importJob";
 
 let tusServer: Server | null = null;
 
 const HEARTBEAT_THROTTLE_MS = 5_000;
-
-const UPLOAD_STATUSES = ["queued", "uploading"];
 
 const authenticatedUser = new WeakMap<IncomingMessage, number>();
 
@@ -50,7 +49,7 @@ async function requireOwnedUploadJob(req: Request, uid: string | undefined): Pro
   if (job.createdBy !== userId) {
     uploadError(403, "This import job belongs to another user.");
   }
-  if (!UPLOAD_STATUSES.includes(job.status)) {
+  if (!isUploadStatus(job.status)) {
     uploadError(409, `Import job is ${job.status} and no longer accepts upload data.`);
   }
   return job;
