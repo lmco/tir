@@ -59,10 +59,6 @@ export function sortOldestFirst<T>(members: GroupMember<T>[]): GroupMember<T>[] 
   });
 }
 
-export function groupLabels(size: number): string[] {
-  return Array.from({ length: size }, (_, i) => `rev ${i + 1}`);
-}
-
 export function diffBenchmarks(newer: BenchmarkTuple[], older: BenchmarkTuple[]): LibraryDiff {
   const newById = new Map(newer.map((t) => [t.stigid, t]));
   const oldById = new Map(older.map((t) => [t.stigid, t]));

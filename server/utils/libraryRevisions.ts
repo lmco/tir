@@ -3,7 +3,6 @@ import { Stig, StigLibrary } from "../../db/models";
 import {
   diffBenchmarks,
   sortOldestFirst,
-  groupLabels,
   type BenchmarkTuple,
   type GroupMember,
   type LibraryDiff,
@@ -54,12 +53,16 @@ export async function recomputeRevisionLabels(
   const ordered = sortOldestFirst(await loadSameDateGroup(classification, libraryDate));
   if (ordered.length === 0) return null;
 
-  const labels = groupLabels(ordered.length);
-  for (let i = 0; i < ordered.length; i++) {
-    const library = ordered[i].ref;
+  const pinned = new Set(
+    ordered.filter((m) => m.ref.labelSource !== "auto").map((m) => m.ref.revisionLabel),
+  );
+  let next = 1;
+  for (const { ref: library } of ordered) {
     if (library.labelSource !== "auto") continue;
-    if (library.revisionLabel === labels[i]) continue;
-    library.revisionLabel = labels[i];
+    let label = `rev ${next++}`;
+    while (pinned.has(label)) label = `rev ${next++}`;
+    if (library.revisionLabel === label) continue;
+    library.revisionLabel = label;
     library.lastUpdate = DateTime.now().toISO();
     await library.save();
   }
@@ -78,9 +81,7 @@ export async function recomputeRevisionLabels(
   };
 }
 
-export async function recomputeAndSummarize(
-  library: StigLibrary,
-): Promise<RevisionSummary | null> {
+export async function recomputeAndSummarize(library: StigLibrary): Promise<RevisionSummary | null> {
   const recomputed = await recomputeRevisionLabels(library.classification, library.libraryDate);
   if (!recomputed) return null;
 
