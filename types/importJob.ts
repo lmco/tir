@@ -1,8 +1,14 @@
 export const UPLOAD_STATUSES = ["queued", "uploading"] as const;
 export const ACTIVE_STATUSES = [...UPLOAD_STATUSES, "processing"] as const;
 
-export type ImportJobStatus = (typeof ACTIVE_STATUSES)[number] | "done" | "error";
+export const TERMINAL_STATUSES = ["done", "error"] as const;
+
+export type ImportJobStatus = (typeof ACTIVE_STATUSES)[number] | (typeof TERMINAL_STATUSES)[number];
 
 export function isUploadStatus(status: string): boolean {
   return (UPLOAD_STATUSES as readonly string[]).includes(status);
+}
+
+export function isTerminalStatus(status: string): boolean {
+  return (TERMINAL_STATUSES as readonly string[]).includes(status);
 }

@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import { DateTime } from "luxon";
 import { removeImportJobFiles } from "./importJobFiles";
+import { withQueue } from "./queue";
 import { ImportJob } from "~/db/models";
 import { ACTIVE_STATUSES } from "~/types/importJob";
 
@@ -64,15 +65,8 @@ export async function removeStaleAndFindBlockingJob(): Promise<ImportJob | null>
   return blocking;
 }
 
-let claimChain: Promise<unknown> = Promise.resolve();
-
 export function withInProcessImportClaim<T>(fn: () => Promise<T>): Promise<T> {
-  const run = claimChain.then(fn, fn);
-  claimChain = run.then(
-    () => {},
-    () => {},
-  );
-  return run;
+  return withQueue("import-claim", fn);
 }
 
 let activeDeletion: string | null = null;

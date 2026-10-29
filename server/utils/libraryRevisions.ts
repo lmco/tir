@@ -8,6 +8,16 @@ import {
   type LibraryDiff,
 } from "./revisionMath";
 
+export type RevisionGroup = { classification: string; libraryDate: string };
+
+export function revisionGroupOf(library: StigLibrary): RevisionGroup {
+  return { classification: library.classification, libraryDate: library.libraryDate };
+}
+
+export function revisionGroupKey(group: RevisionGroup): string {
+  return `revision-labels:${group.classification}:${group.libraryDate}`;
+}
+
 export type RevisionSummary = {
   label: string | null;
   groupSize: number;
@@ -23,12 +33,9 @@ function toBenchmarkTuples(stigs: Stig[]): BenchmarkTuple[] {
   }));
 }
 
-async function loadSameDateGroup(
-  classification: string,
-  libraryDate: string,
-): Promise<GroupMember<StigLibrary>[]> {
+async function loadSameDateGroup(group: RevisionGroup): Promise<GroupMember<StigLibrary>[]> {
   const libraries = await StigLibrary.findAll({
-    where: { classification, libraryDate },
+    where: { ...group },
     include: [
       {
         model: Stig,
@@ -45,12 +52,11 @@ async function loadSameDateGroup(
 }
 
 export async function recomputeRevisionLabels(
-  classification: string | null,
-  libraryDate: string | null,
+  group: RevisionGroup,
 ): Promise<RevisionSummary | null> {
-  if (!classification || !libraryDate) return null;
+  if (!group.classification || !group.libraryDate) return null;
 
-  const ordered = sortOldestFirst(await loadSameDateGroup(classification, libraryDate));
+  const ordered = sortOldestFirst(await loadSameDateGroup(group));
   if (ordered.length === 0) return null;
 
   const pinned = new Set(
@@ -82,12 +88,11 @@ export async function recomputeRevisionLabels(
 }
 
 export async function recomputeAndSummarize(library: StigLibrary): Promise<RevisionSummary | null> {
-  const recomputed = await recomputeRevisionLabels(library.classification, library.libraryDate);
+  const group = revisionGroupOf(library);
+  const recomputed = await recomputeRevisionLabels(group);
   if (!recomputed) return null;
 
-  const ordered = sortOldestFirst(
-    await loadSameDateGroup(library.classification, library.libraryDate),
-  );
+  const ordered = sortOldestFirst(await loadSameDateGroup(group));
   const index = ordered.findIndex((member) => member.id === library.id);
   if (index === -1) return recomputed;
 

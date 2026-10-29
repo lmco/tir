@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 import { ForeignKeyConstraintError, Op, Transaction } from "sequelize";
-import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
+import { recomputeRevisionLabels, revisionGroupOf } from "~/server/utils/libraryRevisions";
 import { beginLibraryDeletion, endLibraryDeletion } from "~/server/utils/importLock";
 import { requireLibraryManager } from "~/server/utils/libraryAccess";
 import {
@@ -219,7 +219,7 @@ export default defineEventHandler(async (event) => {
   let removed: Removed;
   try {
     removed = await deleteLibrary(library);
-    await recomputeRevisionLabels(library.classification, library.libraryDate);
+    await recomputeRevisionLabels(revisionGroupOf(library));
   } finally {
     endLibraryDeletion();
   }

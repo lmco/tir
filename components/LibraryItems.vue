@@ -86,7 +86,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { Duration } from "luxon";
 import { useUploadStream } from "~/composables/useUploadStream";
 import type { ProgressMessage } from "~/types/progress";
-import { isUploadStatus } from "~/types/importJob";
+import { isUploadStatus, type ImportJobStatus } from "~/types/importJob";
 
 const notificationStore = useNotificationStore();
 const alertsStore = useAlertsStore();
@@ -187,7 +187,7 @@ function formatEta(seconds: number): string {
 type ActiveJob = {
   jobId: string;
   filename: string;
-  status: string;
+  status: ImportJobStatus;
   percent: number;
   message: string;
   stigLibraryId: number | null;

@@ -47,7 +47,7 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
     reporter.status(completionMessage);
 
     const job = await ImportJob.findOne({ where: { uid } });
-    const [claimed] = await ImportJob.update(
+    const [rowsMarkedDone] = await ImportJob.update(
       {
         status: "done",
         percent: 100,
@@ -57,7 +57,7 @@ export async function runImportJob(uid: string, zipArchive: string, originalFile
       },
       { where: { uid, status: "processing" } },
     );
-    if (claimed === 0) {
+    if (rowsMarkedDone === 0) {
       logger.warning({
         service: "ImportJob",
         message: `Job ${uid} finished after it was marked ${

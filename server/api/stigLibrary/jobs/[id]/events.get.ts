@@ -1,6 +1,7 @@
 import { ImportJob } from "~/db/models";
 import { jobEmitter, type JobEvent } from "~/server/utils/jobEmitter";
 import type { ProgressMessage } from "~/types/progress";
+import { isTerminalStatus } from "~/types/importJob";
 
 function failedCount(job: ImportJob): number {
   if (!job.result) return 0;
@@ -60,7 +61,7 @@ export default defineEventHandler(async (event) => {
     return stream.send();
   }
 
-  const terminal = job.status === "done" || job.status === "error";
+  const terminal = isTerminalStatus(job.status);
   if (terminal) {
     jobEmitter.off(uid, listener);
     buffered.length = 0;

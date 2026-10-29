@@ -1,8 +1,12 @@
 import { DateTime } from "luxon";
 import { Op } from "sequelize";
-import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
+import {
+  recomputeRevisionLabels,
+  revisionGroupKey,
+  revisionGroupOf,
+} from "~/server/utils/libraryRevisions";
 import { requireLibraryManager } from "~/server/utils/libraryAccess";
-import { serialized } from "~/server/utils/serialize";
+import { withQueue } from "~/server/utils/queue";
 import { StigLibrary } from "~/db/models";
 
 const MAX_LABEL_LENGTH = 64;
@@ -24,15 +28,14 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const groupKey = `revision-labels:${library.classification}:${library.libraryDate}`;
-  await serialized(groupKey, async () => {
+  await withQueue(revisionGroupKey(revisionGroupOf(library)), async () => {
     await library.reload();
     if (label) await assertLabelFree(library, label);
     library.revisionLabel = label || null;
     library.labelSource = label ? "admin" : "auto";
     library.lastUpdate = DateTime.now().toISO();
     await library.save();
-    await recomputeRevisionLabels(library.classification, library.libraryDate);
+    await recomputeRevisionLabels(revisionGroupOf(library));
   });
   await library.reload();
 
@@ -45,12 +48,7 @@ export default defineEventHandler(async (event) => {
 
 async function assertLabelFree(library: StigLibrary, label: string): Promise<void> {
   const taken = await StigLibrary.findOne({
-    where: {
-      classification: library.classification,
-      libraryDate: library.libraryDate,
-      revisionLabel: label,
-      id: { [Op.ne]: library.id },
-    },
+    where: { ...revisionGroupOf(library), revisionLabel: label, id: { [Op.ne]: library.id } },
   });
   if (taken) {
     throw createError({
