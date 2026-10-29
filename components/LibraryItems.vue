@@ -194,11 +194,11 @@ type ActiveJob = {
 
 const interruptedUploads = new Map<string, string>();
 
-async function loadActiveJobs(): Promise<ActiveJob[]> {
+async function loadActiveJobs(): Promise<ActiveJob[] | null> {
   try {
     return await $fetch<ActiveJob[]>("/api/stigLibrary/jobs");
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -230,7 +230,8 @@ function trackActive(active: ActiveJob[]) {
 }
 
 async function resumeActive() {
-  trackActive(await loadActiveJobs());
+  const active = await loadActiveJobs();
+  if (active) trackActive(active);
 }
 
 async function createJob(filename: string): Promise<string | null> {
@@ -249,7 +250,15 @@ async function createJob(filename: string): Promise<string | null> {
 }
 
 async function startStigUpload(file: File) {
-  trackActive(await loadActiveJobs());
+  const active = await loadActiveJobs();
+  if (!active) {
+    notificationStore.addNotification({
+      type: "error",
+      message: "Could not check for an interrupted upload. Try again.",
+    });
+    return;
+  }
+  trackActive(active);
   const tus = await import("tus-js-client");
   const uploadOptions = {
     endpoint: "/api/uploads",
