@@ -22,23 +22,83 @@ import {
 
 const CHUNK = 5000;
 
+type Removed = { stigs: number; stigData: number; detached: number };
+
 function chunks<T>(items: T[]): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += CHUNK) out.push(items.slice(i, i + CHUNK));
   return out;
 }
 
-async function stigIdsExclusiveTo(libraryId: number, libraryStigIds: number[]): Promise<number[]> {
+function isHttpError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "statusCode" in error;
+}
+
+async function stigIdsInLibrary(libraryId: number, transaction: Transaction): Promise<number[]> {
+  const rows = await StigLibrary_Stig.findAll({
+    attributes: ["StigId"],
+    where: { StigLibraryId: libraryId },
+    raw: true,
+    transaction,
+  });
+  return rows.map((row) => row.StigId);
+}
+
+async function stigIdsExclusiveTo(
+  libraryId: number,
+  libraryStigIds: number[],
+  transaction: Transaction,
+): Promise<number[]> {
   const alsoInOtherLibraries = new Set<number>();
   for (const batch of chunks(libraryStigIds)) {
     const rows = await StigLibrary_Stig.findAll({
       attributes: ["StigId"],
       where: { StigId: { [Op.in]: batch }, StigLibraryId: { [Op.ne]: libraryId } },
       raw: true,
+      transaction,
     });
     for (const row of rows) alsoInOtherLibraries.add(row.StigId);
   }
   return libraryStigIds.filter((stigId) => !alsoInOtherLibraries.has(stigId));
+}
+
+async function assertLibraryUnused(
+  libraryId: number,
+  exclusiveStigIds: number[],
+  transaction: Transaction,
+): Promise<void> {
+  const boundaryCount = await Boundary.count({ where: { StigLibraryId: libraryId }, transaction });
+  if (boundaryCount > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `${boundaryCount} boundar${
+        boundaryCount === 1 ? "y" : "ies"
+      } still use this library. Migrate them to another library first.`,
+    });
+  }
+  if (exclusiveStigIds.length === 0) return;
+
+  const assessmentCount = await Assessment.count({
+    where: { StigId: { [Op.in]: exclusiveStigIds } },
+    transaction,
+  });
+  if (assessmentCount > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `${assessmentCount} assessment(s) reference STIGs that exist only in this library. Migrate or delete them first.`,
+    });
+  }
+
+  const evaluationCount = await Evaluation.count({
+    where: { StigId: { [Op.in]: exclusiveStigIds } },
+    transaction,
+  });
+  if (evaluationCount > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `${evaluationCount} evaluation(s) reference STIGs that exist only in this library. Remove them first.`,
+    });
+  }
 }
 
 async function orphanedStigDataIds(
@@ -49,15 +109,15 @@ async function orphanedStigDataIds(
   for (const batch of chunks(candidateIds)) {
     const where = { StigDatumId: { [Op.in]: batch } };
     const stillReferenced = new Set([
-      ...(await Stig_StigData.findAll({ where, attributes: ["StigDatumId"], raw: true, transaction })).map(
-        (row) => row.StigDatumId,
-      ),
-      ...(await AssessmentItem.findAll({ where, attributes: ["StigDatumId"], raw: true, transaction })).map(
-        (row) => row.StigDatumId,
-      ),
-      ...(await EvaluationItem.findAll({ where, attributes: ["StigDatumId"], raw: true, transaction })).map(
-        (row) => row.StigDatumId,
-      ),
+      ...(
+        await Stig_StigData.findAll({ where, attributes: ["StigDatumId"], raw: true, transaction })
+      ).map((row) => row.StigDatumId),
+      ...(
+        await AssessmentItem.findAll({ where, attributes: ["StigDatumId"], raw: true, transaction })
+      ).map((row) => row.StigDatumId),
+      ...(
+        await EvaluationItem.findAll({ where, attributes: ["StigDatumId"], raw: true, transaction })
+      ).map((row) => row.StigDatumId),
     ]);
     orphanIds.push(...batch.filter((dataId) => !stillReferenced.has(dataId)));
   }
@@ -97,54 +157,16 @@ async function deleteStigsAndOrphanedData(
   return { stigs: exclusiveStigIds.length, stigData: orphanIds.length };
 }
 
-async function stigIdsInLibrary(libraryId: number): Promise<number[]> {
-  const rows = await StigLibrary_Stig.findAll({
-    attributes: ["StigId"],
-    where: { StigLibraryId: libraryId },
-    raw: true,
-  });
-  return rows.map((row) => row.StigId);
-}
-
-async function assertLibraryUnused(libraryId: number, exclusiveStigIds: number[]): Promise<void> {
-  const boundaryCount = await Boundary.count({ where: { StigLibraryId: libraryId } });
-  if (boundaryCount > 0) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: `${boundaryCount} boundar${
-        boundaryCount === 1 ? "y" : "ies"
-      } still use this library. Migrate them to another library first.`,
-    });
-  }
-  if (exclusiveStigIds.length === 0) return;
-
-  const assessmentCount = await Assessment.count({
-    where: { StigId: { [Op.in]: exclusiveStigIds } },
-  });
-  if (assessmentCount > 0) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: `${assessmentCount} assessment(s) reference STIGs that exist only in this library. Migrate or delete them first.`,
-    });
-  }
-
-  const evaluationCount = await Evaluation.count({
-    where: { StigId: { [Op.in]: exclusiveStigIds } },
-  });
-  if (evaluationCount > 0) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: `${evaluationCount} evaluation(s) reference STIGs that exist only in this library. Remove them first.`,
-    });
-  }
-}
-
-async function deleteLibraryRows(
-  library: StigLibrary,
-  exclusiveStigIds: number[],
-): Promise<{ stigs: number; stigData: number }> {
+async function deleteLibrary(library: StigLibrary): Promise<Removed> {
   const transaction = await sequelize.transaction();
   try {
+    const libraryStigIds = await stigIdsInLibrary(library.id, transaction);
+    const exclusiveStigIds =
+      libraryStigIds.length > 0
+        ? await stigIdsExclusiveTo(library.id, libraryStigIds, transaction)
+        : [];
+    await assertLibraryUnused(library.id, exclusiveStigIds, transaction);
+
     const removed =
       exclusiveStigIds.length > 0
         ? await deleteStigsAndOrphanedData(exclusiveStigIds, transaction)
@@ -152,9 +174,10 @@ async function deleteLibraryRows(
     await StigLibrary_Stig.destroy({ where: { StigLibraryId: library.id }, transaction });
     await library.destroy({ transaction });
     await transaction.commit();
-    return removed;
+    return { ...removed, detached: libraryStigIds.length - removed.stigs };
   } catch (error) {
     await transaction.rollback();
+    if (isHttpError(error)) throw error;
     logSequelizeError(error);
     throw createError({ statusCode: 500, statusMessage: "Failed to delete the STIG library." });
   }
@@ -172,14 +195,9 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  let removed = { stigs: 0, stigData: 0 };
-  let libraryStigIds: number[] = [];
+  let removed: Removed;
   try {
-    libraryStigIds = await stigIdsInLibrary(id);
-    const exclusiveStigIds =
-      libraryStigIds.length > 0 ? await stigIdsExclusiveTo(id, libraryStigIds) : [];
-    await assertLibraryUnused(id, exclusiveStigIds);
-    removed = await deleteLibraryRows(library, exclusiveStigIds);
+    removed = await deleteLibrary(library);
     await recomputeRevisionLabels(library.classification, library.libraryDate);
   } finally {
     endLibraryDeletion();
@@ -200,7 +218,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     deleted: id,
-    detachedStigs: libraryStigIds.length - removed.stigs,
+    detachedStigs: removed.detached,
     removedStigs: removed.stigs,
     removedStigData: removed.stigData,
   };
