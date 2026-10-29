@@ -9,7 +9,6 @@ export type ParseStigResults = {
   newStig: boolean;
   checksProcessed: number;
   newCheckCount: number;
-  updatedCheckCount: number;
   unchangedCheckCount: number;
   errorCheckCount: number;
 };
@@ -24,7 +23,6 @@ export async function parseXmlStig(
     newStig: false,
     checksProcessed: 0,
     newCheckCount: 0,
-    updatedCheckCount: 0,
     unchangedCheckCount: 0,
     errorCheckCount: 0,
   };
@@ -78,7 +76,7 @@ export async function parseXmlStig(
     const currentStigIdents = await StigIdent.findAll();
 
     for (const stigData of groupArray) {
-      await parseStigData(
+      const { created, error } = await parseStigData(
         stigData,
         newStig,
         currentStigResponsibilities,
@@ -87,6 +85,10 @@ export async function parseXmlStig(
         stigImportTransaction,
         perfTimer,
       );
+      parseResults.checksProcessed++;
+      if (error) parseResults.errorCheckCount++;
+      else if (created) parseResults.newCheckCount++;
+      else parseResults.unchangedCheckCount++;
     }
 
     await stigImportTransaction.commit();

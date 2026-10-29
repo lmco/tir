@@ -25,7 +25,7 @@ export async function parseStigData(
   currentStigIdents: StigIdent[],
   stigImportTransaction: Transaction,
   perfTimer?: PerfTimer,
-): Promise<{ newStigData: StigData; error: boolean }> {
+): Promise<{ newStigData: StigData; created: boolean; error: boolean }> {
   // const hash = hashObj(stigGroupObj);
 
   perfTimer?.start("NewFindOrBuild");
@@ -121,12 +121,13 @@ export async function parseStigData(
       logger.error(
         `Error saving StigData ${newStigData.dataValues.vuln_num} (${stigGroupObj.Rule.$.id}) in stig ${stig.dataValues.title}: ${errorSummary(error)}${longFieldsNote}`,
       );
+      return { newStigData, created, error: true };
     }
   } else {
     await stig.addStigData(newStigData, { transaction: stigImportTransaction });
   }
 
-  return { newStigData, error: false };
+  return { newStigData, created, error: false };
 }
 
 function parseStigDataObj(stigGroupObj: any, newStigData: StigData) {

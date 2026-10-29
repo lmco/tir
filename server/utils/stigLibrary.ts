@@ -201,7 +201,7 @@ async function saveLibraryRow(
 function tallyParseResult(results: ProcessLibraryResults, parseResults: ParseStigResults): void {
   if (parseResults.newStig) {
     results.newStigCount++;
-  } else if (parseResults.newCheckCount === 0 && parseResults.updatedCheckCount === 0) {
+  } else if (parseResults.newCheckCount === 0) {
     results.unchangedStigCount++;
   } else {
     results.updatedStigCount++;
