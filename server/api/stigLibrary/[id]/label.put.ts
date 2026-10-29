@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { Op } from "sequelize";
 import { recomputeRevisionLabels } from "~/server/utils/libraryRevisions";
 import { requireLibraryManager } from "~/server/utils/libraryAccess";
+import { serialized } from "~/server/utils/serialize";
 import { StigLibrary } from "~/db/models";
 
 const MAX_LABEL_LENGTH = 64;
@@ -23,29 +24,15 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  if (label) {
-    const taken = await StigLibrary.findOne({
-      where: {
-        classification: library.classification,
-        libraryDate: library.libraryDate,
-        revisionLabel: label,
-        id: { [Op.ne]: library.id },
-      },
-    });
-    if (taken) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: `Library ${taken.id} (${taken.filename}) already carries the label "${label}".`,
-      });
-    }
-  }
-
-  library.revisionLabel = label || null;
-  library.labelSource = label ? "admin" : "auto";
-  library.lastUpdate = DateTime.now().toISO();
-  await library.save();
-
-  await recomputeRevisionLabels(library.classification, library.libraryDate);
+  const groupKey = `revision-labels:${library.classification}:${library.libraryDate}`;
+  await serialized(groupKey, async () => {
+    if (label) await assertLabelFree(library, label);
+    library.revisionLabel = label || null;
+    library.labelSource = label ? "admin" : "auto";
+    library.lastUpdate = DateTime.now().toISO();
+    await library.save();
+    await recomputeRevisionLabels(library.classification, library.libraryDate);
+  });
   await library.reload();
 
   return {
@@ -54,3 +41,20 @@ export default defineEventHandler(async (event) => {
     labelSource: library.labelSource,
   };
 });
+
+async function assertLabelFree(library: StigLibrary, label: string): Promise<void> {
+  const taken = await StigLibrary.findOne({
+    where: {
+      classification: library.classification,
+      libraryDate: library.libraryDate,
+      revisionLabel: label,
+      id: { [Op.ne]: library.id },
+    },
+  });
+  if (taken) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `Library ${taken.id} (${taken.filename}) already carries the label "${label}".`,
+    });
+  }
+}
