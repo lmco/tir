@@ -1,17 +1,17 @@
 import type { IncomingMessage } from "node:http";
-import type { H3Event } from "h3";
 import { DateTime } from "luxon";
 import { Op } from "sequelize";
 import { Server, MemoryLocker } from "@tus/server";
 import { FileStore } from "@tus/file-store";
-import { runImportJob } from "./runImportJob";
-import { removeImportJobFiles } from "./importJobFiles";
+import { runImportJob } from "../utils/runImportJob";
+import { removeImportJobFiles } from "../utils/importJobFiles";
 import { ImportJob } from "~/db/models";
 import { UPLOAD_STATUSES, isUploadStatus } from "~/types/importJob";
+import type { TusUploadHandle } from "~/types/tusUpload";
 
-let tusServer: Server | null = null;
-
+const UPLOADS_PATH = "/api/uploads";
 const HEARTBEAT_THROTTLE_MS = 5_000;
+const MISSING_UPLOAD_STATUS_CODES = [404, 410];
 
 const authenticatedUser = new WeakMap<IncomingMessage, number>();
 
@@ -55,8 +55,6 @@ async function requireOwnedUploadJob(req: Request, uid: string | undefined): Pro
   return job;
 }
 
-const MISSING_UPLOAD_STATUS_CODES = [404, 410];
-
 async function uploadAlreadyExists(server: Server, id: string): Promise<boolean> {
   try {
     await server.datastore.getUpload(id);
@@ -78,14 +76,10 @@ async function recordUploadStillAlive(job: ImportJob): Promise<void> {
   );
 }
 
-function getTusServer(): Server {
-  if (tusServer) return tusServer;
-
-  const config = useRuntimeConfig();
-
-  tusServer = new Server({
-    path: "/api/uploads",
-    datastore: new FileStore({ directory: config.temp_folder }),
+function createTusServer(tempFolder: string): Server {
+  const server: Server = new Server({
+    path: UPLOADS_PATH,
+    datastore: new FileStore({ directory: tempFolder }),
     locker: new MemoryLocker(),
     maxSize: 500 * 1024 * 1024,
     relativeLocation: true,
@@ -109,7 +103,7 @@ function getTusServer(): Server {
       await recordUploadStillAlive(job);
     },
     async onUploadCreate(_req, upload) {
-      if (await uploadAlreadyExists(tusServer as Server, upload.id)) {
+      if (await uploadAlreadyExists(server, upload.id)) {
         uploadError(409, "An upload for this import job already exists. Resume it instead.");
       }
       return {};
@@ -138,14 +132,20 @@ function getTusServer(): Server {
       return {};
     },
   });
-
-  return tusServer;
+  return server;
 }
 
-export async function handleTusUpload(event: H3Event) {
-  if (event.node.req.method !== "OPTIONS") {
-    const checkResult = await userCheck(event, undefined, undefined, undefined);
-    authenticatedUser.set(event.node.req, checkResult.user.id);
-  }
-  await getTusServer().handle(event.node.req, event.node.res);
-}
+export default defineNitroPlugin((nitroApp) => {
+  const server = createTusServer(useRuntimeConfig().temp_folder);
+
+  nitroApp.hooks.hook("request", (event) => {
+    if (!event.path.startsWith(UPLOADS_PATH)) return;
+    const handle: TusUploadHandle = {
+      async handle(userId) {
+        if (userId !== null) authenticatedUser.set(event.node.req, userId);
+        await server.handle(event.node.req, event.node.res);
+      },
+    };
+    event.context.tus = handle;
+  });
+});
