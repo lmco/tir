@@ -56,12 +56,12 @@
               <ul role="list" class="flex flex-1 flex-col gap-y-4">
                 <!-- Status Filters -->
                 <li>
-                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Filters</div>
+                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Status</div>
                   <div
                     class="mx-auto mt-1 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500 lg:mx-0 lg:max-w-none lg:grid-cols-3"
                   ></div>
                   <ul role="list" class="-mx-2 space-y-1">
-                    <li v-for="(item, index) in filter" :key="item.name">
+                    <li v-for="(item, index) in statusFilter" :key="item.name">
                       <a
                         :href="item.href"
                         :class="[
@@ -112,10 +112,68 @@
                                         class="mx-auto mt-1 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500  lg:mx-0 lg:max-w-none lg:grid-cols-3">
                                     </div> -->
                 </li>
+                <li>
+                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Severity</div>
 
+                  <div
+                    class="mx-auto mt-1 grid max-w-2xl grid-cols-1 border-t border-gray-500 lg:mx-0 lg:max-w-none"
+                  ></div>
+
+                  <ul role="list" class="-mx-2 space-y-1">
+                    <li v-for="item in severityFilter" :key="item.name">
+                      <a
+                        href="#"
+                        :class="[
+                          item.current
+                            ? item.name === 'CAT I'
+                              ? 'text-red-500 hover:text-red-400'
+                              : item.name === 'CAT II'
+                                ? 'text-orange-500 hover:text-orange-400'
+                                : 'text-yellow-500 hover:text-yellow-400'
+                            : item.name === 'CAT I'
+                              ? 'text-gray-400 hover:text-red-500'
+                              : item.name === 'CAT II'
+                                ? 'text-gray-400 hover:text-orange-500'
+                                : 'text-gray-400 hover:text-yellow-500',
+                          'group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6',
+                        ]"
+                        @click.prevent="[(item.current = !item.current), addFilter(item.name)]"
+                      >
+                        <span
+                          :class="[
+                            item.name === 'CAT I'
+                              ? 'bg-red-500'
+                              : item.name === 'CAT II'
+                                ? 'bg-orange-500'
+                                : 'bg-yellow-500',
+                            'relative inline-flex h-2 w-2 self-center rounded-full',
+                          ]"
+                        ></span>
+
+                        {{ item.name }}
+
+                        <span
+                          class="ml-auto w-9 min-w-max whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 text-center text-xs font-medium leading-5 text-gray-800 ring-1 ring-inset ring-gray-700 dark:bg-gray-900 dark:text-white"
+                        >
+                          {{ item.count }}
+                        </span>
+                      </a>
+                    </li>
+                  </ul>
+                </li>
                 <!-- Check Select -->
                 <li>
-                  <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Checks</div>
+                  <div class="flex items-center justify-between">
+                    <div class="text-xs font-semibold leading-6 text-gray-800 dark:text-white">Checks</div>
+
+                    <button
+                      type="button"
+                      class="text-xs text-gray-400 hover:text-indigo-500"
+                      @click="showSeverity = !showSeverity"
+                    >
+                      {{ showSeverity ? "Hide severity" : "Show severity" }}
+                    </button>
+                  </div>
                   <div
                     class="mx-auto mt-1 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-16 border-t border-gray-500 lg:mx-0 lg:max-w-none lg:grid-cols-3"
                   ></div>
@@ -131,7 +189,7 @@
                             (editId = check.id),
                             (editFinding = check.finding_details),
                             (editComments = check.comments),
-                            (editJustification = check.severity_justification),
+                            (editJustification = check.severityOverrideJustification),
                           ]
                         "
                       >
@@ -149,8 +207,14 @@
                             'flex items-center',
                           ]"
                           >{{ check.StigDatum.vuln_num }}
-                          <DocumentArrowDownIcon v-show="check.severity_override" class="ml-2 h-5 w-5"
+                          <DocumentArrowDownIcon v-show="check.severityOverride" class="ml-2 h-5 w-5"
                         /></span>
+                        <span
+                          v-if="showSeverity"
+                          class="ml-auto rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                        >
+                          {{ getCheckSeverity(check) }}
+                        </span>
                       </a>
                     </li>
                   </ul>
@@ -176,7 +240,7 @@
                   </div>
                   <div class="mt-2 flex items-center text-sm text-gray-800 dark:text-gray-300">
                     <ShieldExclamationIcon class="mr-1.5 h-5 w-5 flex-shrink-0 text-gray-500" aria-hidden="true" />
-                    {{ listOfChecks[checkData].StigDatum.severity }}
+                    Severity: {{ getCheckSeverity(listOfChecks[checkData]) }}
                   </div>
                   <div class="mt-2 flex items-center text-sm text-gray-800 dark:text-gray-300">
                     <DocumentMagnifyingGlassIcon
@@ -341,7 +405,7 @@
                           <textarea
                             id="severity_justification"
                             v-model="editJustification"
-                            name="severity_justification"
+                            name="severityOverrideJustification"
                             rows="3"
                             class="block w-full rounded-md border-0 bg-white py-1.5 text-gray-800 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-500/25 dark:text-gray-300 sm:text-sm sm:leading-6"
                           />
@@ -352,7 +416,10 @@
                             type="button"
                             class="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                             @click="
-                              [(editJustification = listOfChecks[assessmentId].severity_justification), closeModal()]
+                              [
+                                (editJustification = listOfChecks[assessmentId].severityOverrideJustification),
+                                closeModal(),
+                              ]
                             "
                           >
                             Cancel
@@ -428,7 +495,7 @@
                 <textarea
                   id="severity_justification"
                   v-model="editJustification"
-                  name="severity_justification"
+                  name="severityOverrideJustification"
                   rows="3"
                   class="block w-full rounded-md border-0 bg-white py-1.5 text-gray-800 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-500/25 dark:text-gray-300 sm:text-sm sm:leading-6"
                 />
@@ -458,11 +525,11 @@
 
 <script setup>
 import { FolderIcon, HomeIcon, UsersIcon } from "@heroicons/vue/24/outline";
-import { DocumentArrowDownIcon } from "@heroicons/vue/20/solid";
 import {
   ArrowUturnLeftIcon,
   CalendarIcon,
   CheckIcon,
+  DocumentArrowDownIcon,
   ShieldExclamationIcon,
   RectangleGroupIcon,
   DocumentCheckIcon,
@@ -482,6 +549,7 @@ import {
 } from "@headlessui/vue";
 import { storeToRefs } from "pinia";
 import { useIdStorageStore } from "~~/stores/IdStorage";
+import { catSeverityToStig } from "~/utils/stig";
 
 const route = useRoute();
 const showErrorNotification = ref(false);
@@ -492,6 +560,7 @@ const { StigId } = storeToRefs(store);
 const { SystemId } = storeToRefs(store);
 const { assessmentId } = storeToRefs(store);
 const { selectedFilterStore } = storeToRefs(store);
+const showSeverity = ref(false);
 
 const stigSystem = {
   StigId,
@@ -534,54 +603,84 @@ const notAFindingCount = ref(getAssessment.value.filter((o) => o.status === "Not
 const notApplicableCount = ref(getAssessment.value.filter((o) => o.status === "Not_Applicable").length);
 const notReviewedCount = ref(getAssessment.value.filter((o) => o.status === "Not_Reviewed").length);
 
-const filter = [
+function countBySeverity(severity) {
+  return computed(() => getAssessment.value.filter((item) => getCheckSeverity(item) === severity).length);
+}
+
+const catICount = countBySeverity("CAT I");
+const catIICount = countBySeverity("CAT II");
+const catIIICount = countBySeverity("CAT III");
+
+const severityFilter = [
+  {
+    name: "CAT I",
+    count: catICount,
+    current: selectedFilterStore.value.includes("CAT I"),
+  },
+  {
+    name: "CAT II",
+    count: catIICount,
+    current: selectedFilterStore.value.includes("CAT II"),
+  },
+  {
+    name: "CAT III",
+    count: catIIICount,
+    current: selectedFilterStore.value.includes("CAT III"),
+  },
+];
+
+const statusFilter = [
   {
     name: "Open",
     href: "#",
     icon: HomeIcon,
     count: openCount,
-    current: selectedFilterStore.value.find((o) => o === "Open"),
+    current: selectedFilterStore.value.includes("Open"),
   },
   {
     name: "NotAFinding",
     href: "#",
     icon: UsersIcon,
     count: notAFindingCount,
-    current: selectedFilterStore.value.find((o) => o === "NotAFinding"),
+    current: selectedFilterStore.value.includes("NotAFinding"),
   },
   {
     name: "Not_Applicable",
     href: "#",
     icon: FolderIcon,
     count: notApplicableCount,
-    current: selectedFilterStore.value.find((o) => o === "Not_Applicable"),
+    current: selectedFilterStore.value.includes("Not_Applicable"),
   },
   {
     name: "Not_Reviewed",
     href: "#",
     icon: CalendarIcon,
     count: notReviewedCount,
-    current: selectedFilterStore.value.find((o) => o === "Not_Reviewed"),
+    current: selectedFilterStore.value.includes("Not_Reviewed"),
   },
 ];
 const selectedFilter = selectedFilterStore;
 // console.log(selectedFilter.value)
+const statusFilterNames = ["Open", "NotAFinding", "Not_Applicable", "Not_Reviewed"];
+
+const severityFilterNames = ["CAT I", "CAT II", "CAT III"];
+
 function getFilterItems() {
-  if (selectedFilter.value.length === 0) {
-    const fullList = getAssessment.value;
-    // fullList.sort((a,b)=> a.id - b.id)
-    return fullList;
-  } else {
-    const filteredList = getAssessment.value.filter((item) => {
-      return selectedFilter.value.includes(item.status);
-    });
-    // filteredList.sort((a,b)=> a.id - b.id)
-    return filteredList;
-  }
+  const selectedStatuses = selectedFilter.value.filter((filter) => statusFilterNames.includes(filter));
+
+  const selectedSeverities = selectedFilter.value.filter((filter) => severityFilterNames.includes(filter));
+
+  return getAssessment.value.filter((item) => {
+    const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(item.status);
+
+    const matchesSeverity = selectedSeverities.length === 0 || selectedSeverities.includes(getCheckSeverity(item));
+
+    return matchesStatus && matchesSeverity;
+  });
 }
 
 function addFilter(name) {
-  if (selectedFilter.value.findIndex((o) => o === name) != -1) {
+  if (selectedFilter.value.findIndex((o) => o === name) !== -1) {
     const del = selectedFilter.value.findIndex((o) => o === name);
     selectedFilter.value.splice(del, 1);
     selectedFilterStore.value = selectedFilter.value;
@@ -617,40 +716,37 @@ const listOfChecks = getAssessment.value.sort((a, b) => {
 const stigListValue = systemStigList.value.findIndex((o) => o.id === StigId.value);
 
 /// /////////// Check View
-let checkData = ref(assessmentId.value);
-let checkStatus = ref("");
-let startingPosition = ref();
-let startingCatPosition = ref();
+const checkData = ref(assessmentId.value);
 
-checkStatus = listOfChecks[checkData.value].status;
-// console.log('Check Data',checkData)
 function updateVar() {
-  checkStatus = listOfChecks[checkData].status;
-  startingPosition = statusOptions.findIndex((o) => o.title === checkStatus);
-  currentSeverity.value = listOfChecks[checkData].StigDatum.severity;
-  selected = statusOptions[startingPosition];
+  const check = listOfChecks[checkData.value];
 
-  if (listOfChecks[checkData].severity_override) {
-    currentOverrideSeverity.value = listOfChecks[checkData].severity_override;
-  } else {
-    currentOverrideSeverity.value = null;
+  if (!check) {
+    return;
   }
 
-  if (currentOverrideSeverity.value) {
-    startingCatPosition.value = catOptions.findIndex((o) => o.title === currentOverrideSeverity.value);
-  } else {
-    startingCatPosition.value = catOptions.findIndex((o) => o.title === severityMap.get(currentSeverity.value));
-  }
+  checkStatus.value = check.status;
 
-  severity = catOptions[startingCatPosition.value];
+  startingPosition.value = statusOptions.findIndex((option) => option.title === checkStatus.value);
+
+  selected.value = statusOptions[startingPosition.value] || statusOptions[0];
+
+  editStatus.value = selected.value.title;
+
+  currentSeverity.value = check.StigDatum.severity;
+
+  startingCatPosition.value = catOptions.findIndex((option) => option.title === getCheckSeverity(check));
+
+  severity.value = catOptions[startingCatPosition.value] || catOptions[0];
+
+  editSeverity.value = severity.value.title;
 }
 
 function findCheck(checkId) {
-  checkData = listOfChecks.findIndex((o) => o.id === checkId);
-  assessmentId.value = checkData;
-  // console.log("Array Position", checkData)
+  checkData.value = listOfChecks.findIndex((item) => item.id === checkId);
+
+  assessmentId.value = checkData.value;
 }
-/// /////////// Finding Status
 
 const statusOptions = [
   { title: "Open" },
@@ -658,6 +754,7 @@ const statusOptions = [
   { title: "Not_Applicable" },
   { title: "Not_Reviewed" },
 ];
+
 const catOptions = [{ title: "CAT I" }, { title: "CAT II" }, { title: "CAT III" }];
 
 const severityMap = new Map();
@@ -665,40 +762,39 @@ severityMap.set("low", "CAT III");
 severityMap.set("medium", "CAT II");
 severityMap.set("high", "CAT I");
 
-startingPosition = statusOptions.findIndex((o) => o.title === checkStatus);
-let selected = ref(statusOptions[startingPosition]);
+function getCheckSeverity(check) {
+  return severityMap.get(check.severityOverride) || severityMap.get(check.StigDatum.severity);
+}
+
+const checkStatus = ref(listOfChecks[checkData.value].status);
+
+const startingPosition = ref(statusOptions.findIndex((option) => option.title === checkStatus.value));
+
+const selected = ref(statusOptions[startingPosition.value] || statusOptions[0]);
 
 const currentSeverity = ref(listOfChecks[checkData.value].StigDatum.severity);
-const currentOverrideSeverity = ref();
-if (listOfChecks[checkData.value].severity_override) {
-  currentOverrideSeverity.value = listOfChecks[checkData.value].severity_override;
-} else {
-  currentOverrideSeverity.value = null;
-}
 
-if (currentOverrideSeverity.value) {
-  startingCatPosition.value = catOptions.findIndex((o) => o.title === currentOverrideSeverity.value);
-} else {
-  startingCatPosition.value = catOptions.findIndex((o) => o.title === severityMap.get(currentSeverity.value));
-}
+const startingCatPosition = ref(
+  catOptions.findIndex((option) => option.title === getCheckSeverity(listOfChecks[checkData.value])),
+);
 
-let severity = ref(catOptions[startingCatPosition.value]);
+const severity = ref(catOptions[startingCatPosition.value] || catOptions[0]);
 
 /// /////////// Edit API
 const editId = ref(listOfChecks[assessmentId.value].id);
 const editFinding = ref(listOfChecks[assessmentId.value].finding_details);
 const editComments = ref(listOfChecks[assessmentId.value].comments);
-const editJustification = ref(listOfChecks[assessmentId.value].severity_justification);
-const editStatus = ref(selected.title);
-const editSeverity = ref(severity.title);
+const editJustification = ref(listOfChecks[assessmentId.value].severityOverrideJustification);
+const editStatus = ref(selected.value.title);
+const editSeverity = ref(severity.value.title);
 
 const editData = {
   id: editId.value,
   finding_details: editFinding.value,
   comments: editComments.value,
   status: editStatus.value,
-  severity_override: editSeverity.value,
-  severity_justification: editJustification.value,
+  severityOverride: editSeverity.value,
+  severityOverrideJustification: editJustification.value,
   BoundaryId: route.params.boundaryId,
 };
 async function editAssessmentApi(editData) {
@@ -710,8 +806,8 @@ async function editAssessmentApi(editData) {
         finding_details: editFinding.value,
         comments: editComments.value,
         status: editStatus.value,
-        severity_override: editSeverity.value,
-        severity_justification: editJustification.value,
+        severityOverride: editSeverity.value ? catSeverityToStig(editSeverity.value) : null,
+        severityOverrideJustification: editJustification.value,
         BoundaryId: route.params.boundaryId,
       },
     });
@@ -777,7 +873,9 @@ function openModal() {
   isOpen.value = true;
 }
 function checkSeverity(title) {
-  if (title !== catOptions.find((o) => o.title === severityMap.get(currentSeverity.value)).title) {
+  const baseSeverity = severityMap.get(currentSeverity.value);
+
+  if (title !== baseSeverity) {
     openModal();
   } else {
     editSeverity.value = null;
