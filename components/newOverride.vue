@@ -62,7 +62,7 @@
                   >Systems Affected
                 </DialogTitle>
                 <div class="mb-6 mt-2">
-                  <p class="text-sm text-gray-500">Edit our systems below.</p>
+                  <p class="text-sm text-gray-500">Edit your systems below.</p>
                 </div>
               </div>
 
@@ -340,6 +340,8 @@ async function saveOverrides() {
             body: {
               id: system.overrideLocks[0].id,
               systemId: system.systemId,
+              overrideType: lock.type,
+              stigDatumId: system.overrides.id,              
             },
           });
         }

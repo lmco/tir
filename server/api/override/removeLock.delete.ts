@@ -1,15 +1,33 @@
-import { Boundary_User, BoundaryRole, System } from "~/db/models";
-import { Boundary } from "~/db/models/boundary";
 import { StigOverride } from "~/db/models/stigOverride";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
+
+  if (!body.systemId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `systemId required.`,
+    });
+  }
+
   const systemId = body.systemId;
+  const checkResult = await userCheck(event, systemId, undefined, undefined);
 
-  const rawToken = getCookie(event, "tirtoken");
-  let userId: number;
+  if (!checkResult.BoundaryRoleId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Not a member of the Boundary",
+    });
+  }
 
-  userId = 1;
+  if (!body.overrideType || !body.stigDatumId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `overrideType and stigDatumId are both required.`,
+    });
+  }
+  const overrideType = body.overrideType;
+  const stigDatumId = body.stigDatumId;
 
   if (!systemId) {
     throw createError({
@@ -18,36 +36,21 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const system = await System.findOne({
-    include: {
-      model: Boundary,
-      include: [
-        {
-          model: Boundary_User,
-          include: [{ model: BoundaryRole }],
-        },
-      ],
-    },
+  const stigOverride = await StigOverride.findOne({
     where: {
-      id: systemId,
+      type: overrideType,
+      SystemId: systemId,
+      StigDatumId: stigDatumId,
     },
-  });
+  })
 
-  if (!system) {
+  if (!stigOverride) {
     throw createError({
-      statusCode: 400,
-      statusMessage: `Unable to find System`,
+      statusCode: 404,
+      statusMessage: "STIG Override not found.",
     });
   }
-  const boundaryUser = system?.Boundary?.Boundary_User?.find(
-    (boundaryUser) => boundaryUser.id === userId,
-  );
-
-  if (boundaryUser) {
-    console.log("foundUser");
-  }
-
-  await StigOverride.destroy({ where: { StigDatumId: body.id } });
-
+  
+  await StigOverride.destroy({ where: { id: stigOverride.id } });
   return { success: true };
 });
