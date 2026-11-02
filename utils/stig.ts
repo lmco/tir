@@ -25,17 +25,20 @@ export function getHighestStigSeverity(severities: string[], defaultSeverity: st
     high: 3,
   };
 
-  if (severities.length === 0) {
-    return defaultSeverity;
-  }
-
-  let highestSeverity = severities[0];
+  let highestSeverity: string | null = null;
 
   for (const severity of severities) {
-    if (severityPriority[severity] > severityPriority[highestSeverity]) {
+    if (!(severity in severityPriority)) {
+      continue;
+    }
+
+    if (
+      highestSeverity === null ||
+      severityPriority[severity] > severityPriority[highestSeverity]
+    ) {
       highestSeverity = severity;
     }
   }
 
-  return highestSeverity;
+  return highestSeverity ?? defaultSeverity;
 }

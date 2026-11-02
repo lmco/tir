@@ -280,7 +280,7 @@
                         >
                           <ListboxOption
                             v-for="option in catOptions"
-                            v-slot="{ active, selected }"
+                            v-slot="{ active, selected: optionSelected }"
                             :key="option.title"
                             as="template"
                             :value="option"
@@ -294,8 +294,8 @@
                             >
                               <div class="flex flex-col">
                                 <div class="flex justify-between">
-                                  <p :class="selected ? 'font-semibold' : 'font-normal'">{{ option.title }}</p>
-                                  <span v-if="selected" :class="active ? 'text-white' : 'text-indigo-600'">
+                                  <p :class="optionSelected ? 'font-semibold' : 'font-normal'">{{ option.title }}</p>
+                                  <span v-if="optionSelected" :class="active ? 'text-white' : 'text-indigo-600'">
                                     <CheckIcon class="h-5 w-5" aria-hidden="true" />
                                   </span>
                                 </div>
@@ -335,9 +335,9 @@
                         >
                           <ListboxOption
                             v-for="option in statusOptions"
-                            as="template"
                             :key="option.title"
-                            v-slot="{ active, selected }"
+                            v-slot="{ active, selected: optionSelected }"
+                            as="template"
                             :value="option"
                           >
                             <li
@@ -349,8 +349,8 @@
                             >
                               <div class="flex flex-col">
                                 <div class="flex justify-between">
-                                  <p :class="selected ? 'font-semibold' : 'font-normal'">{{ option.title }}</p>
-                                  <span v-if="selected" :class="active ? 'text-white' : 'text-indigo-600'">
+                                  <p :class="optionSelected ? 'font-semibold' : 'font-normal'">{{ option.title }}</p>
+                                  <span v-if="optionSelected" :class="active ? 'text-white' : 'text-indigo-600'">
                                     <CheckIcon class="h-5 w-5" aria-hidden="true" />
                                   </span>
                                 </div>
@@ -503,7 +503,7 @@
               <div class="mt-2 flex justify-end">
                 <button
                   class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                  @click="editAssessmentApi(editData)"
+                  @click="editAssessmentApi()"
                 >
                   Save
                 </button>
@@ -574,8 +574,7 @@ const { data: checkResults } = await useFetch("/api/assessment/get", {
 });
 
 if (checkResults?.value.error) {
-  console.log("No Assessment found.  Creating a blank one.");
-  const { data: createResults } = await useFetch("/api/assessment/create", {
+  await useFetch("/api/assessment/create", {
     method: "POST",
     body: stigSystem,
   });
@@ -596,7 +595,7 @@ const { data: systems } = await useFetch("/api/systems/list", {
 });
 const system = systems.value.find((o) => o.id === parseInt(route.params.systemId));
 
-////////////// Filter Items //////////////////////
+// Filter Items
 
 const openCount = ref(getAssessment.value.filter((o) => o.status === "Open").length);
 const notAFindingCount = ref(getAssessment.value.filter((o) => o.status === "NotAFinding").length);
@@ -690,7 +689,7 @@ function addFilter(name) {
   }
 }
 
-////////////// From STIG
+//  From STIG
 const currentSystem = {
   SystemId,
 };
@@ -739,7 +738,9 @@ function updateVar() {
 
   severity.value = catOptions[startingCatPosition.value] || catOptions[0];
 
-  editSeverity.value = severity.value.title;
+  editSeverity.value = check.severityOverride
+    ? severityMap.get(check.severityOverride)
+    : null;
 }
 
 function findCheck(checkId) {
@@ -786,18 +787,14 @@ const editFinding = ref(listOfChecks[assessmentId.value].finding_details);
 const editComments = ref(listOfChecks[assessmentId.value].comments);
 const editJustification = ref(listOfChecks[assessmentId.value].severityOverrideJustification);
 const editStatus = ref(selected.value.title);
-const editSeverity = ref(severity.value.title);
+const editSeverity = ref(
+  listOfChecks[checkData.value].severityOverride
+    ? severityMap.get(listOfChecks[checkData.value].severityOverride)
+    : null,
+);
 
-const editData = {
-  id: editId.value,
-  finding_details: editFinding.value,
-  comments: editComments.value,
-  status: editStatus.value,
-  severityOverride: editSeverity.value,
-  severityOverrideJustification: editJustification.value,
-  BoundaryId: route.params.boundaryId,
-};
-async function editAssessmentApi(editData) {
+
+async function editAssessmentApi() {
   try {
     await $fetch("/api/assessment/updateItem", {
       method: "PUT",

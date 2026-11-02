@@ -380,10 +380,14 @@ export async function getEvaluationSummary(
 
               systemFindingCounts.push(newFindingCount);
 
-              systemSeverities.push({
-                severity: assessmentItem.severityOverride || stigData.severity,
-                systemId: assessmentItem.Assessment?.System?.id!,
-              });
+              const systemId = assessmentItem.Assessment?.System?.id;
+
+              if (systemId !== undefined) {
+                systemSeverities.push({
+                  severity: assessmentItem.severityOverride || stigData.severity,
+                  systemId,
+                });
+              }
             }
           }
 
