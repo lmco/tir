@@ -60,7 +60,7 @@ jobs:
         run: |
           R="$RUNNER_TEMP/review"
           [ -n "$OAUTH_TOKEN" ] && export CLAUDE_CODE_OAUTH_TOKEN="$OAUTH_TOKEN"
-          [ -n "$API_KEY" ] && export ANTHROPIC_API_KEY="$API_KEY"
+          [ -z "$OAUTH_TOKEN" ] && [ -n "$API_KEY" ] && export ANTHROPIC_API_KEY="$API_KEY"
           [ -n "$OAUTH_TOKEN$API_KEY" ] || { echo "no CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret"; exit 1; }
           cat > "$R/prompt.md" <<PROMPT
           You are reviewing pull request #$PR_NUMBER into $BASE_REF of this repository.

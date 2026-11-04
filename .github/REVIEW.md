@@ -62,7 +62,7 @@ If there is nothing worth saying, say so in one line.
 
 ## Workflows (.github/**)
 
-- Changes here alter what runs on the deploy runner. Look for secrets reaching
+- Changes here can alter what runs on the deploy runner. Look for secrets reaching
   logs or artifacts, permissions blocks wider than the job needs, third-party
   actions that are not pinned, and anything that lets PR content reach a shell
   unquoted.
