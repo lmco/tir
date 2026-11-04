@@ -18,7 +18,7 @@ jobs:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
       !contains(github.event.pull_request.title, 'sync mitre')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -37,7 +37,7 @@ jobs:
           node-version: 22
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.318
 
       - name: Collect PR context
         env:
@@ -74,8 +74,8 @@ jobs:
           - stat.txt and diff.patch are the change against the base branch, with the
             lockfile excluded.
 
-          You may read any file in the checkout to understand context around the diff,
-          and run git diff, git log and git show. Do not modify anything.
+          You may read and search any file in the checkout to understand context
+          around the diff. You have no shell and cannot modify anything.
 
           Write the review as GitHub-flavoured markdown and nothing else. Plain ASCII
           punctuation only. Structure:
@@ -94,13 +94,22 @@ jobs:
           claude -p "$(cat "$R/prompt.md")" \
             --model claude-opus-5-5 \
             --add-dir "$R" \
-            --tools "Read,Grep,Glob,Bash" \
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(wc:*)" \
+            --tools "Read,Grep,Glob" \
+            --allowedTools "Read,Grep,Glob" \
+            --disallowedTools "Read(//proc/**)" \
             --no-session-persistence \
             --disable-slash-commands \
             --output-format text > "$R/review.md"
 
           test -s "$R/review.md" || { echo "empty review output"; exit 1; }
+          for secret in "$OAUTH_TOKEN" "$API_KEY"; do
+            if [ -n "$secret" ] && grep -qF -- "$secret" "$R/review.md"; then
+              echo "review output contains a credential, refusing to post"; exit 1
+            fi
+          done
+          if grep -qE 'sk-ant-[A-Za-z0-9_-]{8,}' "$R/review.md"; then
+            echo "review output looks like it contains a credential, refusing to post"; exit 1
+          fi
           head -c 2000 "$R/review.md"
 
       - name: Post or update comment
@@ -120,8 +129,8 @@ jobs:
             --paginate --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" | head -n1)
 
           if [ -n "$existing" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" \
-              -f body=@"$R/comment.md" > /dev/null
+            jq -Rs '{body: .}' "$R/comment.md" \
+              | gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" --input - > /dev/null
             echo "updated comment $existing"
           else
             gh pr comment "$PR_NUMBER" --body-file "$R/comment.md"
