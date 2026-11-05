@@ -3,32 +3,39 @@ name: AI review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to review
+        required: true
+        type: string
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: review-${{ github.event.pull_request.number }}
+  group: review-${{ github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   review:
     name: Claude review
     if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      !contains(github.event.pull_request.title, 'sync mitre')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login != 'dependabot[bot]' &&
+       !contains(github.event.pull_request.title, 'sync mitre'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
       MARKER: "<!-- tir-ai-review -->"
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/merge', inputs.pr) || '' }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -40,13 +47,18 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.318
 
       - name: Collect PR context
+        id: pr
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p "$RUNNER_TEMP/review"
-          printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/review/title.txt"
-          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/review/body.md"
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json baseRefName,headRefOid,title,body > "$RUNNER_TEMP/review/pr.json"
+          jq -r '.title' "$RUNNER_TEMP/review/pr.json" > "$RUNNER_TEMP/review/title.txt"
+          jq -r '.body // ""' "$RUNNER_TEMP/review/pr.json" > "$RUNNER_TEMP/review/body.md"
+          BASE_REF=$(jq -r '.baseRefName' "$RUNNER_TEMP/review/pr.json")
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(jq -r '.headRefOid' "$RUNNER_TEMP/review/pr.json")" >> "$GITHUB_OUTPUT"
           git diff --stat "origin/$BASE_REF...HEAD" -- . ':!package-lock.json' \
             > "$RUNNER_TEMP/review/stat.txt"
           git diff "origin/$BASE_REF...HEAD" -- . ':!package-lock.json' \
@@ -57,6 +69,7 @@ jobs:
         env:
           OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
         run: |
           R="$RUNNER_TEMP/review"
           [ -n "$OAUTH_TOKEN" ] && export CLAUDE_CODE_OAUTH_TOKEN="$OAUTH_TOKEN"
@@ -115,7 +128,7 @@ jobs:
       - name: Post or update comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           R="$RUNNER_TEMP/review"
           {
