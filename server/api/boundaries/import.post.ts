@@ -450,10 +450,10 @@ export default defineEventHandler(async (event) => {
                         for (const so of ai.StigDatum.StigOverrides) {
                           // need type, value, lastUpdate, creationDate, SystemId, StigDatumId
                           let myMappedStigDatum = DatumLookupTable[so.StigDatumId].value;
-                          let myOverride = await StigOverride.findOrCreate({
+                          // `created` indicates whether this identity inserted a new row.
+                          const [myOverride, created] = await StigOverride.findOrCreate({
                             where: {
                               type: so.type,
-                              value: so.value,
                               SystemId: systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
@@ -464,6 +464,10 @@ export default defineEventHandler(async (event) => {
                               StigDatumId: myMappedStigDatum,
                             },
                           });
+                          if (!created && myOverride.value !== so.value) {
+                            myOverride.value = so.value;
+                            await myOverride.save();
+                          }
                         }
                       }
                     }
