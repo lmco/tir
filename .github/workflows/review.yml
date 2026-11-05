@@ -72,18 +72,14 @@ jobs:
           git diff "origin/$BASE_REF...HEAD" -- . ':!package-lock.json' \
             > "$RUNNER_TEMP/review/diff.patch"
           wc -l "$RUNNER_TEMP/review/diff.patch"
-          if git show "origin/$BASE_REF:.github/REVIEW.md" > "$RUNNER_TEMP/review/REVIEW.md" 2>/dev/null; then
-            echo "review guidelines taken from $BASE_REF"
-          else
-            cp .github/REVIEW.md "$RUNNER_TEMP/review/REVIEW.md"
-            echo "::warning::$BASE_REF has no .github/REVIEW.md, using the pull request's copy"
-          fi
+          git show "origin/$BASE_REF:.github/REVIEW.md" > "$RUNNER_TEMP/review/REVIEW.md" \
+            || { echo "::error::$BASE_REF has no .github/REVIEW.md, refusing to review against the pull request's copy"; exit 1; }
 
       - name: Strip Claude Code configuration from the checkout
         run: |
-          rm -rf .claude .mcp.json CLAUDE.md CLAUDE.local.md
+          rm -rf .claude .mcp.json CLAUDE.md CLAUDE.local.md AGENTS.md
           find . -path ./.git -prune -o -type l -print -exec rm -f {} +
-          find . -path ./.git -prune -o \( -name CLAUDE.md -o -name CLAUDE.local.md -o -name .mcp.json \) -print -exec rm -f {} +
+          find . -path ./.git -prune -o \( -name CLAUDE.md -o -name CLAUDE.local.md -o -name AGENTS.md -o -name .mcp.json \) -print -exec rm -f {} +
           find . -path ./.git -prune -o -type d -name .claude -prune -print -exec rm -rf {} +
 
       - name: Review
@@ -134,10 +130,11 @@ jobs:
           claude -p "$(cat "$R/prompt.md")" \
             --model claude-opus-5-5 \
             --add-dir "$GITHUB_WORKSPACE" \
+            --restricted \
+            --settings '{"permissions":{"blockReadsOutsideWorkingDirectories":true}}' \
             --setting-sources user \
             --strict-mcp-config \
             --tools "Read,Grep,Glob" \
-            --allowedTools "Read,Grep,Glob" \
             --disallowedTools "Read(//proc/**),Read(~/.claude/**)" \
             --no-session-persistence \
             --disable-slash-commands \
@@ -166,6 +163,11 @@ jobs:
             cat "$R/review.md"
             printf '\n\n<sub>Reviewed %s with Claude. Automated first pass, not a substitute for human review. Reply here and a human will follow up.</sub>\n' "${HEAD_SHA:0:7}"
           } > "$R/comment.md"
+
+          current=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
+          if [ "$current" != "$HEAD_SHA" ]; then
+            echo "pull request head moved from $HEAD_SHA to $current, leaving the comment to the newer run"; exit 0
+          fi
 
           existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --paginate --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" | head -n1)
