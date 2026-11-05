@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { Boundary_User, BoundaryRole, System, UserRole } from "~/db/models";
 import { Boundary } from "~/db/models/boundary";
 import { StigOverride } from "~/db/models/stigOverride";
@@ -61,6 +62,7 @@ export default defineEventHandler(async (event) => {
 
   if (!newLock) {
     lockResult.value = body.value;
+    lockResult.lastUpdate = DateTime.now().toISO();
     await lockResult.save();
   }
 
