@@ -1,6 +1,8 @@
 import { DataTypes } from "sequelize";
 
+// Database constraint enforcing one active row per override identity.
 const indexName = "StigOverrides_type_StigDatumId_SystemId_unique";
+// Temporary copy of rows removed by up, retained for down.
 const duplicateTableName = "StigOverrideCompositeKeyDuplicates";
 
 // Select one winner per identity: same-value rows prefer the highest id;
@@ -39,9 +41,12 @@ const rowsToArchive = (table) => `
   ${duplicateIds(table)}
 `;
 
+// Shared column order for copying rows between the active and archive tables.
 const overrideColumns = `id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"`;
 
+// SQLite needs a table rebuild to change nullability; this definition keeps both cascade FKs.
 const sqliteOverridesTable = (tableName, keysRequired) => {
+  // Add NOT NULL to both identity columns on up, and omit it on down.
   const required = keysRequired ? " NOT NULL" : "";
   return `
     CREATE TABLE "${tableName}" (
@@ -56,6 +61,7 @@ const sqliteOverridesTable = (tableName, keysRequired) => {
   `;
 };
 
+// SQLite rebuilds reset AUTOINCREMENT, so retain its previous high-water mark.
 const preserveSqliteSequence = async (sequelize, maxId, transaction) => {
   await sequelize.query(`
     UPDATE sqlite_sequence
@@ -71,7 +77,9 @@ const preserveSqliteSequence = async (sequelize, maxId, transaction) => {
   `, { replacements: { maxId }, transaction });
 };
 
+// Read the greater of the stored sequence and current maximum ID before rebuilding.
 const sqliteHighWaterMark = async (sequelize, table, transaction) => {
+  // Query both values so deleted IDs are not reused after the rebuild.
   const [rows] = await sequelize.query(`
     SELECT MAX(
       COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'StigOverrides'), 0),
@@ -83,9 +91,13 @@ const sqliteHighWaterMark = async (sequelize, table, transaction) => {
 };
 
 export const up = async ({ context: sequelize }) => {
+  // Match the public-schema convention used by the original StigOverride migration.
   const schemaPrefix = sequelize.getDialect() === "postgres" ? "public." : "";
+  // Fully-qualified active table for raw SQL statements.
   const table = `${schemaPrefix}"StigOverrides"`;
+  // Fully-qualified archive table for raw SQL statements.
   const duplicateTable = `${schemaPrefix}"${duplicateTableName}"`;
+  // Sequelize API for creating tables and indexes.
   const queryInterface = sequelize.getQueryInterface();
   let transaction;
   let sqliteMaxId = 0;
@@ -131,7 +143,7 @@ export const up = async ({ context: sequelize }) => {
 
     await sequelize.query(`
       DELETE FROM ${table}
-      WHERE id IN (${rowsToArchive(table)})
+      WHERE id IN (SELECT id FROM ${duplicateTable})
     `, { transaction });
 
     // PostgreSQL can change nullability in place; SQLite rebuilds the table.
@@ -169,14 +181,19 @@ export const up = async ({ context: sequelize }) => {
 };
 
 export const down = async ({ context: sequelize }) => {
+  // Match the public-schema convention used by the original StigOverride migration.
   const schemaPrefix = sequelize.getDialect() === "postgres" ? "public." : "";
+  // Fully-qualified active table for raw SQL statements.
   const table = `${schemaPrefix}"StigOverrides"`;
+  // Fully-qualified archive table for raw SQL statements.
   const duplicateTable = `${schemaPrefix}"${duplicateTableName}"`;
+  // Sequelize API for dropping indexes, rebuilding tables, and restoring the archive.
   const queryInterface = sequelize.getQueryInterface();
   let transaction;
 
   try {
     transaction = await sequelize.transaction();
+    // Preserve SQLite's existing AUTOINCREMENT high-water mark through the rollback rebuild.
     let sqliteMaxId = 0;
     if (sequelize.getDialect() === "sqlite") {
       sqliteMaxId = await sqliteHighWaterMark(sequelize, table, transaction);
