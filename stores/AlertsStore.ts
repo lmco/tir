@@ -1,3 +1,5 @@
+import { useNotificationStore } from "~/stores/NotificationStore";
+
 export const useAlertsStore = defineStore("alerts", {
   state: () => ({
     alerts: [],
@@ -5,6 +7,17 @@ export const useAlertsStore = defineStore("alerts", {
   }),
 
   actions: {
+    reportError(title: string, error: unknown) {
+      const requestError = error as {
+        data?: { statusMessage?: string };
+        message?: string;
+      };
+      const message =
+        requestError?.data?.statusMessage || requestError?.message || "The request failed.";
+
+      useNotificationStore().addNotification({ type: "error", title, message });
+    },
+
     async fetchAlerts(userId) {
       if (!userId) {
         console.warn("fetchAlerts called with no userId. Skipping request.");

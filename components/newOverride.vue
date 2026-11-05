@@ -147,6 +147,7 @@
 <script setup>
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from "@headlessui/vue";
 import { XMarkIcon, LockClosedIcon } from "@heroicons/vue/24/outline";
+import { useAlertsStore } from "~/stores/AlertsStore";
 
 // const { open, overrideClass, overrides } = defineProps({
 //   open: Boolean,
@@ -172,6 +173,15 @@ const props = defineProps({
   },
 });
 const { open, overrideClass, overrides } = toRefs(props);
+const alertsStore = useAlertsStore();
+
+async function saveRequest(title, request) {
+  try {
+    await request();
+  } catch (error) {
+    alertsStore.reportError(title, error);
+  }
+}
 
 const localOverrides = ref(overrides.value);
 
@@ -290,17 +300,21 @@ async function saveOverrides() {
 
     if (overrideClass.value === "stig") {
       body.severityOverride = system.overrides.severityOverride;
-      await $fetch("/api/override/override", {
-        method: "POST",
-        body,
-      });
+      await saveRequest("Failed to save STIG override", () =>
+        $fetch("/api/override/override", {
+          method: "POST",
+          body,
+        }),
+      );
     }
     if (overrideClass.value === "nessus") {
       body.severityOverride = mapSeverity(system.overrides.severityOverride);
-      await $fetch("/api/vuln/override", {
-        method: "POST",
-        body,
-      });
+      await saveRequest("Failed to save Nessus override", () =>
+        $fetch("/api/vuln/override", {
+          method: "POST",
+          body,
+        }),
+      );
     }
 
     for (const lock of system.overrideLocks) {
@@ -312,38 +326,46 @@ async function saveOverrides() {
         };
         if (overrideClass.value === "stig") {
           body.stigDatumId = system.overrides.id;
-          await $fetch("/api/override/lock", {
-            method: "PUT",
-            body,
-          });
+          await saveRequest("Failed to save STIG override lock", () =>
+            $fetch("/api/override/lock", {
+              method: "PUT",
+              body,
+            }),
+          );
         }
         if (overrideClass.value === "nessus") {
           body.nessusReportItemId = system.id;
-          await $fetch("/api/vuln/lock", {
-            method: "PUT",
-            body,
-          });
+          await saveRequest("Failed to save Nessus override lock", () =>
+            $fetch("/api/vuln/lock", {
+              method: "PUT",
+              body,
+            }),
+          );
         }
       } else if (lock.id) {
         if (overrideClass.value === "nessus") {
-          await $fetch("/api/vuln/removeLock", {
-            method: "DELETE",
-            body: {
-              id: system.overrideLocks[0].id,
-              systemId: system.systemId,
-            },
-          });
+          await saveRequest("Failed to remove Nessus override lock", () =>
+            $fetch("/api/vuln/removeLock", {
+              method: "DELETE",
+              body: {
+                id: lock.id,
+                systemId: system.systemId,
+              },
+            }),
+          );
         }
         if (overrideClass.value === "stig") {
-          await $fetch("/api/override/removeLock", {
-            method: "DELETE",
-            body: {
-              id: system.overrideLocks[0].id,
-              systemId: system.systemId,
-              overrideType: lock.type,
-              stigDatumId: system.overrides.id,              
-            },
-          });
+          await saveRequest("Failed to remove STIG override lock", () =>
+            $fetch("/api/override/removeLock", {
+              method: "DELETE",
+              body: {
+                id: lock.id,
+                systemId: system.systemId,
+                overrideType: lock.type,
+                stigDatumId: system.overrides.id,
+              },
+            }),
+          );
         }
       }
     }

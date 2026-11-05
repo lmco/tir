@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   }
   if (checkResult.BoundaryRoleId === 4) {
     throw createError({
-      statusCode: 401,
+      statusCode: 403,
       statusMessage: "Reviewers are unable to remove override locks",
     });
   }
