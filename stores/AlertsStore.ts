@@ -1,12 +1,18 @@
 import { useNotificationStore } from "~/stores/NotificationStore";
+const NOT_AUTHENTICATED = 401;
 
 export const useAlertsStore = defineStore("alerts", {
   state: () => ({
     alerts: [],
     pollingInterval: null,
+    userId: null,
   }),
 
   actions: {
+    refresh() {
+      if (this.userId) this.fetchAlerts(this.userId);
+    },
+    
     reportError(title: string, error: unknown) {
       const requestError = error as {
         data?: { statusMessage?: string };
@@ -32,6 +38,13 @@ export const useAlertsStore = defineStore("alerts", {
           credentials: "include",
         });
       } catch (error) {
+        const err = error as { statusCode?: number; response?: { status?: number } };
+        const status = err?.statusCode ?? err?.response?.status;
+        if (status === NOT_AUTHENTICATED) {
+          this.stopPolling();
+          navigateTo("/");
+          return;
+        }
         console.error("Error fetching alerts:", error);
       }
     },
@@ -49,6 +62,7 @@ export const useAlertsStore = defineStore("alerts", {
       }
 
       console.log("Starting alert polling...");
+      this.userId = userId;
       this.fetchAlerts(userId); // Initial fetch
 
       this.pollingInterval = setInterval(() => {
