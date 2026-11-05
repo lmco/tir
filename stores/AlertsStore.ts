@@ -1,3 +1,4 @@
+import { useNotificationStore } from "~/stores/NotificationStore";
 const NOT_AUTHENTICATED = 401;
 
 export const useAlertsStore = defineStore("alerts", {
@@ -10,6 +11,17 @@ export const useAlertsStore = defineStore("alerts", {
   actions: {
     refresh() {
       if (this.userId) this.fetchAlerts(this.userId);
+    },
+    
+    reportError(title: string, error: unknown) {
+      const requestError = error as {
+        data?: { statusMessage?: string };
+        message?: string;
+      };
+      const message =
+        requestError?.data?.statusMessage || requestError?.message || "The request failed.";
+
+      useNotificationStore().addNotification({ type: "error", title, message });
     },
 
     async fetchAlerts(userId) {
