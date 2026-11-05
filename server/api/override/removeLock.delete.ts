@@ -19,7 +19,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Not a member of the Boundary",
     });
   }
-
+  if (checkResult.BoundaryRoleId === 4) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Reviewers are unable to remove override locks",
+    });
+  }
   if (!body.overrideType || !body.stigDatumId) {
     throw createError({
       statusCode: 400,
@@ -29,28 +34,20 @@ export default defineEventHandler(async (event) => {
   const overrideType = body.overrideType;
   const stigDatumId = body.stigDatumId;
 
-  if (!systemId) {
-    throw createError({
-      statusCode: 399,
-      statusMessage: `SystemId required.`,
-    });
-  }
-
-  const stigOverride = await StigOverride.findOne({
+  const removed = await StigOverride.destroy({
     where: {
       type: overrideType,
       SystemId: systemId,
       StigDatumId: stigDatumId,
     },
-  })
+  });
 
-  if (!stigOverride) {
+  if (removed === 0) {
     throw createError({
       statusCode: 404,
       statusMessage: "STIG Override not found.",
     });
   }
   
-  await StigOverride.destroy({ where: { id: stigOverride.id } });
   return { success: true };
 });
