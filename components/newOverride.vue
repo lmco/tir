@@ -175,14 +175,6 @@ const props = defineProps({
 const { open, overrideClass, overrides } = toRefs(props);
 const alertsStore = useAlertsStore();
 
-async function saveRequest(title, request) {
-  try {
-    await request();
-  } catch (error) {
-    alertsStore.reportError(title, error);
-  }
-}
-
 const localOverrides = ref(overrides.value);
 
 watch(overrides, (newVal) => {
@@ -290,6 +282,16 @@ function mapSeverity(severityLevel) {
 }
 
 async function saveOverrides() {
+  let failed = false;
+  const saveRequest = async (title, request) => {
+    try {
+      await request();
+    } catch (error) {
+      failed = true;
+      alertsStore.reportError(title, error);
+    }
+  };
+
   for (const system of localOverrides.value) {
     const body = {
       id: system.id,
@@ -370,6 +372,8 @@ async function saveOverrides() {
       }
     }
   }
+  if (failed) return false;
+
   if (overrideClass.value === "nessus") {
     refreshNuxtData("VulnDataAPI");
   }
@@ -377,5 +381,6 @@ async function saveOverrides() {
     refreshNuxtData("evaluationAPI");
   }
   emit("update:open", false);
+  return true;
 }
 </script>
