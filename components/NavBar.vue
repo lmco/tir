@@ -305,7 +305,7 @@ const { data: currentUser, error: userError } = useAsyncData(
 const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
   "currentAlert",
   async () => {
-    if (!currentUser.value?.id) return null;
+    if (!currentUser.value?.id) return [];
     return await $fetch("/api/config/alert", {
       method: "GET",
       query: { userId: currentUser.value.id },

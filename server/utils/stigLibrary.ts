@@ -14,8 +14,13 @@ import {
 } from "../../db/models";
 import { hashFile } from "./hash";
 import { createBlankAssessment } from "./assessments";
+import { recomputeAndSummarize, type RevisionSummary } from "./libraryRevisions";
+import { importJobWorkDir } from "./importJobFiles";
 
+import type { ParseStigResults } from "./importStig";
 import type { ProgressStreamer } from "~/server/utils/progressBar";
+
+export type Classification = "U" | "FOUO" | "CUI";
 
 export type ProcessLibraryResults = {
   stigProcessed: number;
@@ -23,6 +28,11 @@ export type ProcessLibraryResults = {
   updatedStigCount: number;
   unchangedStigCount: number;
   xmlsExtracted: number;
+  classification: Classification;
+  libraryDate: string;
+  skippedPackages: string[];
+  failedStigs: string[];
+  revision: RevisionSummary | null;
 };
 
 export const migrateBoundary = async (
@@ -98,172 +108,260 @@ export const findMatch = (check: AssessmentItem, array: AssessmentItem[]) => {
   return array.find((item) => item.StigDatum?.rule_id === check.StigDatum?.rule_id);
 };
 
+const CLASSIFICATION_RANK: Record<Classification, number> = { U: 0, FOUO: 1, CUI: 2 };
+
+export const classificationFromPackageName = (name: string): Classification | null => {
+  const match = /^(CUI|FOUO|U)_/.exec(name);
+  return match ? (match[1] as Classification) : null;
+};
+
+const highestClassification = (values: Classification[]): Classification =>
+  values.reduce(
+    (max, value) => (CLASSIFICATION_RANK[value] > CLASSIFICATION_RANK[max] ? value : max),
+    "U",
+  );
+
+const readBenchmarkDate = (xmlFilePath: string): string | null => {
+  const fd = fs.openSync(xmlFilePath, "r");
+  try {
+    const buffer = Buffer.alloc(65536);
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    const header = buffer.toString("utf8", 0, bytesRead);
+    const match = header.match(/<status\b[^>]*\bdate="([^"]+)"/);
+    return match ? match[1] : null;
+  } finally {
+    fs.closeSync(fd);
+  }
+};
+
+const deriveLibraryDate = (xmlFiles: string[]): string => {
+  let newest: DateTime | null = null;
+  for (const xmlFile of xmlFiles) {
+    const raw = readBenchmarkDate(xmlFile);
+    if (!raw) continue;
+    const parsed = DateTime.fromISO(raw);
+    if (!parsed.isValid) continue;
+    if (!newest || parsed > newest) {
+      newest = parsed;
+    }
+  }
+  if (!newest) {
+    throw new Error("Unable to determine library date from benchmark status dates.");
+  }
+  return newest.toISODate() as string;
+};
+
+async function librarySaveError(
+  error: unknown,
+  originalName: string,
+  hash: string,
+): Promise<Error> {
+  if (!(error instanceof UniqueConstraintError)) {
+    logger.error("Error saving Library Entry.", { cause: error });
+    return new Error("Error saving Library Entry.");
+  }
+  for (const element of error.errors) {
+    logger.error(`[ERROR] ${originalName} ${element.message}`);
+  }
+  const existing = await StigLibrary.findOne({ where: { hash } });
+  return new Error(
+    `This exact file was already imported as library ${existing?.id} (${existing?.filename}).`,
+    { cause: error },
+  );
+}
+
+async function saveLibraryRow(
+  originalName: string,
+  hash: string,
+  classification: Classification,
+  libraryDate: string,
+  streamer: ProgressStreamer,
+): Promise<StigLibrary> {
+  const newLibrary = StigLibrary.build({
+    filename: originalName,
+    hash,
+    classification,
+    libraryDate,
+  });
+  try {
+    await newLibrary.save();
+  } catch (error) {
+    throw await librarySaveError(error, originalName, hash);
+  }
+  streamer.status(`STIG Library Saved: ${newLibrary.dataValues.id}`);
+  streamer.saved(newLibrary.dataValues.id);
+
+  const saved = await StigLibrary.findOne({ where: { hash } });
+  if (!saved) {
+    throw new Error("Unable to load saved STIG Library.");
+  }
+  return saved;
+}
+
+function tallyParseResult(results: ProcessLibraryResults, parseResults: ParseStigResults): void {
+  if (parseResults.newStig) {
+    results.newStigCount++;
+  } else if (parseResults.newCheckCount === 0) {
+    results.unchangedStigCount++;
+  } else {
+    results.updatedStigCount++;
+  }
+}
+
+async function importXmlFile(
+  xmlFile: string,
+  library: StigLibrary,
+  results: ProcessLibraryResults,
+  streamer: ProgressStreamer,
+): Promise<void> {
+  const name = path.basename(xmlFile);
+  let parseResults: ParseStigResults | null = null;
+  try {
+    parseResults = await parseXmlStig(xmlFile, library);
+  } catch {
+    logger.error(`Error Parsing STIG: ${name}`);
+  }
+  if (!parseResults || parseResults.errorCheckCount > 0) {
+    results.failedStigs.push(name);
+    streamer.status(`Failed to import ${name} - see the server log.`);
+    return;
+  }
+  tallyParseResult(results, parseResults);
+}
+
+function reportRevision(
+  revision: RevisionSummary | null,
+  classification: Classification,
+  libraryDate: string,
+  streamer: ProgressStreamer,
+): void {
+  if (!revision || revision.groupSize <= 1) return;
+  streamer.status(
+    `Same-date group (${classification} ${libraryDate}) now holds ${revision.groupSize} libraries; ` +
+      `this one is "${revision.label ?? "unlabelled"}".`,
+  );
+  if (!revision.diff) return;
+
+  const { againstLibraryId, changed, added, removed } = revision.diff;
+  if (changed.length + added.length + removed.length === 0) {
+    streamer.status(
+      `Identical benchmark set to library ${againstLibraryId} - likely a duplicate upload; delete one.`,
+    );
+    return;
+  }
+  streamer.status(
+    `Differs from library ${againstLibraryId}: ` +
+      `${changed.length} updated, ${added.length} added, ${removed.length} removed.`,
+  );
+}
+
 export const processLibrary = async (
   sourceZip: string,
-  baseOutputPath: string,
+  jobUid: string,
   originalName: string,
   streamer: ProgressStreamer,
 ): Promise<ProcessLibraryResults> => {
-  let outputDirPath = baseOutputPath;
-
-  if (originalName) {
-    outputDirPath = path.join(baseOutputPath, originalName.substring(0, originalName.length - 4));
-  }
-
+  const outputDirPath = importJobWorkDir(jobUid);
   if (!fs.existsSync(outputDirPath)) {
     fs.mkdirSync(outputDirPath, { recursive: true });
   }
 
-  const libraryNameAttributes = parseLibraryName(originalName);
   const hash = await hashFile(sourceZip);
+  const { xmlFiles, importedPackages, skippedPackages } = extractLibrary(sourceZip, outputDirPath);
 
-  const newLibrary = await StigLibrary.build({
-    filename: libraryNameAttributes.filename,
+  if (importedPackages.length === 0) {
+    throw new Error("No marked STIG packages ({U,CUI,FOUO}_) found; nothing imported.");
+  }
+  if (skippedPackages.length > 0) {
+    streamer.status(
+      `Skipped ${skippedPackages.length} unmarked package(s): ${skippedPackages.join(", ")}`,
+    );
+  }
+
+  const classification = highestClassification(importedPackages.map((pkg) => pkg.classification));
+  const libraryDate = deriveLibraryDate(xmlFiles);
+  const newStigLibrary = await saveLibraryRow(
+    originalName,
     hash,
-    classification: libraryNameAttributes.classification,
-    libraryDate: libraryNameAttributes.date,
-    version: libraryNameAttributes.version,
-    importedDate: DateTime.now().toISODate(),
-  });
+    classification,
+    libraryDate,
+    streamer,
+  );
 
-  try {
-    await newLibrary.save();
-    streamer.status(`STIG Library Saved: ${newLibrary.dataValues.id}`);
-  } catch (error) {
-    if (error instanceof UniqueConstraintError) {
-      error.errors.forEach((element) => {
-        logger.error(`[ERROR] ${libraryNameAttributes.filename} ${element.message}`);
-      });
-      fs.rmSync(sourceZip);
-      throw new Error("Error saving Library entry to DB.  Unique Constraint.", { cause: error });
-    } else {
-      logger.error("Error saving Library Entry.", { cause: error });
-      throw new Error("Error saving Library Entry.");
-    }
-  }
+  fs.renameSync(sourceZip, path.join(outputDirPath, path.basename(sourceZip)));
 
-  const newStigLibrary = await StigLibrary.findOne({
-    where: {
-      hash: newLibrary.dataValues.hash,
-    },
-  });
-
-  const filelist = await extractLibrary(sourceZip, outputDirPath);
-  fs.rename(sourceZip, path.join(outputDirPath, path.basename(sourceZip)), (error) => {
-    if (error) {
-      console.log(`[ERROR] Moving file ${error.message}`);
-    }
-  });
-
-  if (!newStigLibrary) {
-    logger.error("Unable to parse library version.");
-    throw new Error("Unable to parse library version.");
-  }
-
-  const processLibraryResults: ProcessLibraryResults = {
+  const results: ProcessLibraryResults = {
     stigProcessed: 0,
     newStigCount: 0,
     updatedStigCount: 0,
     unchangedStigCount: 0,
-    xmlsExtracted: filelist.length,
+    xmlsExtracted: xmlFiles.length,
+    classification,
+    libraryDate,
+    skippedPackages,
+    failedStigs: [],
+    revision: null,
   };
 
-  streamer.status(`Extracted ${filelist.length} XML files.`);
-  streamer.progress(0); // Initial progress (0%)
-  for (let i = 0; i < filelist.length; i++) {
-    const xmlFile = filelist[i];
-    try {
-      const parseResults = await parseXmlStig(xmlFile, newStigLibrary);
-
-      if (parseResults.newStig) {
-        processLibraryResults.newStigCount++;
-      } else if (parseResults.newCheckCount === 0 && parseResults.updatedCheckCount === 0) {
-        processLibraryResults.unchangedStigCount++;
-      } else {
-        processLibraryResults.updatedStigCount++;
-      }
-
-      // Send progress update for each file processed
-      streamer.status(`Processed file ${i + 1}/${filelist.length}: ${path.basename(xmlFile)}`);
-      const progress = Math.round(((i + 1) / filelist.length) * 100);
-      streamer.progress(progress); // Send progress as a number
-    } catch {
-      logger.error(`Error Parsing STIG: ${path.basename(xmlFile)}`);
-    }
+  streamer.status(`Extracted ${xmlFiles.length} XML files.`);
+  streamer.progress(0);
+  for (const [i, xmlFile] of xmlFiles.entries()) {
+    await importXmlFile(xmlFile, newStigLibrary, results, streamer);
+    streamer.status(`Processed file ${i + 1}/${xmlFiles.length}: ${path.basename(xmlFile)}`);
+    streamer.progress(Math.round(((i + 1) / xmlFiles.length) * 100));
   }
   streamer.progress(100);
-  return processLibraryResults;
+  if (results.failedStigs.length > 0) {
+    streamer.status(
+      `${results.failedStigs.length} STIG(s) failed to import: ${results.failedStigs.join(", ")}`,
+    );
+  }
+
+  newStigLibrary.importedDate = DateTime.now().toISO();
+  await newStigLibrary.save();
+
+  results.revision = await recomputeAndSummarize(newStigLibrary);
+  reportRevision(results.revision, classification, libraryDate, streamer);
+
+  return results;
 };
 
-const extractLibrary = async (sourceZip: string, outputDirectory: string): Promise<string[]> => {
+type ExtractedLibrary = {
+  xmlFiles: string[];
+  importedPackages: { name: string; classification: Classification }[];
+  skippedPackages: string[];
+};
+
+const extractLibrary = (sourceZip: string, outputDirectory: string): ExtractedLibrary => {
   const temporaryExtraction = path.join(outputDirectory, "tempExtraction");
   const mainZip = new AdmZip(sourceZip);
-  const fileList: string[] = [];
+  const xmlFiles: string[] = [];
+  const importedPackages: { name: string; classification: Classification }[] = [];
+  const skippedPackages: string[] = [];
   fs.mkdirSync(temporaryExtraction);
   mainZip.extractAllTo(temporaryExtraction, true);
 
   fs.readdirSync(temporaryExtraction).forEach((nestedFile) => {
-    const nestedFilePath = path.join(temporaryExtraction, nestedFile);
-    if (path.extname(nestedFile) === ".zip") {
-      const nestedZip = new AdmZip(nestedFilePath);
-      nestedZip.getEntries().forEach((entry) => {
-        if (path.extname(entry.name) === ".xml") {
-          nestedZip.extractEntryTo(entry, outputDirectory, false, true);
-          fileList.push(path.join(outputDirectory, path.basename(entry.entryName)));
-        }
-      });
+    if (path.extname(nestedFile) !== ".zip") return;
+
+    const classification = classificationFromPackageName(nestedFile);
+    if (!classification) {
+      skippedPackages.push(nestedFile);
+      return;
     }
+
+    const nestedZip = new AdmZip(path.join(temporaryExtraction, nestedFile));
+    nestedZip.getEntries().forEach((entry) => {
+      if (path.extname(entry.name) !== ".xml") return;
+      nestedZip.extractEntryTo(entry, outputDirectory, false, true);
+      xmlFiles.push(path.join(outputDirectory, path.basename(entry.entryName)));
+    });
+    importedPackages.push({ name: nestedFile, classification });
   });
 
   fs.rmSync(temporaryExtraction, { recursive: true });
 
-  return fileList;
-};
-
-interface parseResults {
-  filename: string;
-  classification: string;
-  date: string;
-  version: number;
-  error: boolean;
-  errorMessage?: string;
-}
-
-export const parseLibraryName = (filename: string): parseResults => {
-  const parsedAttributes: parseResults = {
-    filename,
-    classification: "",
-    date: "",
-    version: 0,
-    error: false,
-  };
-
-  const classificationMatches = filename.match(/^[A-Z]+_/);
-  if (classificationMatches && classificationMatches.length > 0) {
-    parsedAttributes.classification = classificationMatches[0].replace("_", "");
-  } else {
-    parsedAttributes.error = true;
-    parsedAttributes.errorMessage = "Unable to parse library classification";
-  }
-
-  const dateMatches = filename.match(/\d{4}\_\d{2}/);
-  if (dateMatches && dateMatches.length > 0) {
-    const paddedMatch = dateMatches[0] + "_01";
-    parsedAttributes.date = DateTime.fromFormat(paddedMatch, "yyyy_LL_dd").toISODate() || "";
-  } else {
-    parsedAttributes.error = true;
-    parsedAttributes.errorMessage = "Unable to parse library date.";
-  }
-
-  const versionMatches = filename.match(/v\d\.zip$/);
-  if (versionMatches && versionMatches.length > 0) {
-    parsedAttributes.version = parseInt(versionMatches[0].substring(1, 2), 10);
-  } else {
-    parsedAttributes.error = true;
-    parsedAttributes.errorMessage = "Unable to parse library version";
-  }
-
-  return parsedAttributes;
+  return { xmlFiles, importedPackages, skippedPackages };
 };
 
 export const findStigByStigId = async (
