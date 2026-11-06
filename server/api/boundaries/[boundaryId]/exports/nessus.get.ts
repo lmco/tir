@@ -7,9 +7,10 @@ import { NessusReport } from "~/db/models/nessusReport";
 import { NessusReportItem } from "~/db/models/nessusReportItem";
 import { NessusPlugin } from "~/db/models/nessusPlugin";
 import { Cve } from "~/db/models/cve";
+import { NessusOverride } from "~/db/models/nessusOverride";
 import { NessusCsvHeaders, type HeaderLabel } from "~/types/nessus";
 import { parseOrThrow, createApiError } from "~/server/utils/apiValidation";
-import { H3String } from "~/server/utils/validation/h3";
+import { H3String, H3OptionalString } from "~/server/utils/validation/h3";
 import { BoundaryIdSchema } from "~/server/utils/validation/fields";
 
 const headerValues = Object.values(NessusCsvHeaders) as HeaderLabel[];
@@ -43,6 +44,7 @@ export const SelectedHeadersSchema = H3String.transform((s) =>
 const QuerySchema = z
   .object({
     selectedHeaders: SelectedHeadersSchema,
+    factorOverrides: H3OptionalString.transform((s) => s?.toLowerCase() !== "false"),
   })
   .strict();
 
@@ -54,7 +56,7 @@ export default defineEventHandler(async (event) => {
     root: "params",
   });
 
-  const { selectedHeaders } = parseOrThrow(QuerySchema, getQuery(event), {
+  const { selectedHeaders, factorOverrides } = parseOrThrow(QuerySchema, getQuery(event), {
     event,
     root: "query",
   });
@@ -84,6 +86,7 @@ export default defineEventHandler(async (event) => {
   const systems = await System.findAll({ where: { BoundaryId } });
 
   const reports: NessusReport[] = [];
+  const overrideLookup: { [id: number]: NessusOverride[][] } = {};
 
   for (const system of systems) {
     logger.debug({
@@ -108,9 +111,17 @@ export default defineEventHandler(async (event) => {
     });
 
     if (report) reports.push(report);
+
+    const overrides = await NessusOverride.findAll({ where: { SystemId: system.id } });
+    overrideLookup[system.id] = [overrides];
   }
 
-  const nessusCSV = await generateNessusCsv(reports, selectedHeaders);
+  const nessusCSV = await generateNessusCsv(
+    reports,
+    overrideLookup,
+    selectedHeaders,
+    factorOverrides,
+  );
 
   const stream = Readable.from(Buffer.from(nessusCSV, "utf-8"));
 
