@@ -10,6 +10,18 @@ import { Cve } from "~/db/models/cve";
 import { NessusOverride } from "~/db/models/nessusOverride";
 
 export default defineEventHandler(async (event) => {
+  setResponseHeader(event, "Deprecation", "true");
+  setResponseHeader(
+    event,
+    "Link",
+    '</api/boundaries/{id}/exports/nessus>; rel="successor-version"',
+  );
+
+  logger.alert({
+    service: "API",
+    message: "Deprecated endpoint used: /api/boundaries/nessus",
+  });
+
   const query = getQuery(event);
 
   if (!query.BoundaryId) {
