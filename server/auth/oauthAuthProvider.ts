@@ -47,6 +47,8 @@ export const KNOWN_PROVIDERS: Record<
   },
 };
 
+export const DEFAULT_CUSTOM_SCOPE = "openid profile email";
+
 export class OAuthAuthProvider extends AuthProvider {
   private readonly config: OAuthProviderConfig & { secret?: string };
   private groupMappings: GroupMapping[] = [];
@@ -74,7 +76,7 @@ export class OAuthAuthProvider extends AuthProvider {
     if (providerType === "custom") {
       if (!this.config.authorizationUrl) throw new H3Error("Custom OAuth: authorizationUrl is required.");
       authorizeUrl = this.config.authorizationUrl;
-      scope = "openid profile email";
+      scope = this.config.scope.trim() || DEFAULT_CUSTOM_SCOPE;
     } else {
       const p = KNOWN_PROVIDERS[providerType];
       authorizeUrl = p.authorize(baseUrl);
@@ -84,7 +86,13 @@ export class OAuthAuthProvider extends AuthProvider {
     const randomState = generateRandomState();
     const state = `oauth:${this.config.id}~${randomState}`;
 
-    const params = new URLSearchParams({ client_id: clientId, redirect_uri: callback, scope, state });
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      redirect_uri: callback,
+      scope,
+      state,
+    });
     event.context.auth = { state };
     return Promise.resolve({ redirect: `${authorizeUrl}?${params}` });
   }
@@ -105,19 +113,19 @@ export class OAuthAuthProvider extends AuthProvider {
     let userGroups: string[];
 
     if (providerType === "github") {
-      const token = await this.exchangeToken(code, "json");
+      const token = await this.exchangeToken(code, "post");
       profile = await this.fetchGitHubProfile(token);
       userGroups = await this.fetchGitHubGroups(token, profile.email);
     } else if (providerType === "gitlab") {
-      const token = await this.exchangeToken(code, "json");
+      const token = await this.exchangeToken(code, "post");
       profile = await this.fetchGitLabProfile(token);
       userGroups = await this.fetchGitLabGroups(token, profile.email);
     } else if (providerType === "bitbucket") {
-      const token = await this.exchangeToken(code, "basic-auth-form");
+      const token = await this.exchangeToken(code, "basic");
       profile = await this.fetchBitbucketProfile(token);
       userGroups = await this.fetchBitbucketGroups(token, profile.email);
     } else {
-      const token = await this.exchangeToken(code, "json");
+      const token = await this.exchangeToken(code, "post");
       const userInfo = await this.fetchUserInfo(this.config.userInfoUrl, token);
       profile = extractCustomProfile(userInfo);
       assertEmailVerified(userInfo, this.config.requireVerifiedEmail);
@@ -148,10 +156,7 @@ export class OAuthAuthProvider extends AuthProvider {
     };
   }
 
-  private async exchangeToken(
-    code: string,
-    method: "json" | "basic-auth-form",
-  ): Promise<string> {
+  private async exchangeToken(code: string, method: "post" | "basic"): Promise<string> {
     const { clientId, secret, callback } = this.config;
     const providerType = this.config.providerType;
 
@@ -165,23 +170,21 @@ export class OAuthAuthProvider extends AuthProvider {
       );
     }
 
-    let res: Response;
-
-    if (method === "basic-auth-form") {
-      const credentials = Buffer.from(`${clientId}:${secret}`).toString("base64");
-      const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: callback });
-      res = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { Authorization: `Basic ${credentials}`, "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-      });
+    // RFC 6749 section 4.1.3: the token request is always form encoded. Only the client
+    // authentication differs: credentials in the body (client_secret_post) or Basic auth.
+    const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: callback });
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    };
+    if (method === "basic") {
+      headers.Authorization = `Basic ${Buffer.from(`${clientId}:${secret ?? ""}`).toString("base64")}`;
     } else {
-      res = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ client_id: clientId, client_secret: secret, code, grant_type: "authorization_code", redirect_uri: callback }),
-      });
+      body.set("client_id", clientId);
+      body.set("client_secret", secret ?? "");
     }
+
+    const res = await fetch(tokenUrl, { method: "POST", headers, body: body.toString() });
 
     if (!res.ok) throw new Error(`OAuth token exchange failed: ${res.status}`);
     const data = await res.json();

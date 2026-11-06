@@ -116,6 +116,7 @@ export interface OAuthProviderConfig {
   authorizationUrl: string;
   tokenUrl: string;
   userInfoUrl: string;
+  scope: string;
   groupClaimPath: string;
   requireVerifiedEmail: boolean;
 }
@@ -132,6 +133,7 @@ export const OAUTH_PROVIDER_SCHEMA = {
   authorizationUrl: { type: "str", default: "" },
   tokenUrl: { type: "str", default: "" },
   userInfoUrl: { type: "str", default: "" },
+  scope: { type: "str", default: "" },
   groupClaimPath: { type: "str", default: "" },
   requireVerifiedEmail: { type: "bool", default: true },
 } as const;

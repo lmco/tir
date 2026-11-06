@@ -110,6 +110,26 @@
             class="flex-1"
           />
         </div>
+        <div class="flex items-center gap-4">
+          <label
+            :for="`oauth-${provider.id}-scope`"
+            class="w-48 text-left text-sm font-medium"
+            >Scope</label
+          >
+          <div class="flex flex-1 flex-col gap-1">
+            <AppInput
+              :id="`oauth-${provider.id}-scope`"
+              v-model="provider.scope"
+              type="text"
+              placeholder="openid profile email"
+              class="w-full"
+            />
+            <p class="text-xs text-gray-400">
+              Space-separated scopes sent on the authorization request. Leave empty for
+              <code>openid profile email</code>.
+            </p>
+          </div>
+        </div>
       </template>
       <div class="flex items-center gap-4">
         <label

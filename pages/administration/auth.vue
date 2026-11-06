@@ -292,6 +292,7 @@ function addOAuth() {
     authorizationUrl: "",
     tokenUrl: "",
     userInfoUrl: "",
+    scope: "",
     groupClaimPath: "",
     requireVerifiedEmail: true,
   });
