@@ -49,17 +49,6 @@ export default defineEventHandler(async (event) => {
     root: "query",
   });
 
-  const boundary = await Boundary.findOne({ where: { id: BoundaryId } });
-
-  if (!boundary) {
-    throw createApiError({
-      statusCode: 404,
-      code: "NOT_FOUND",
-      message: "Boundary not found.",
-      requestId,
-    });
-  }
-
   const checkResult = await userCheck(event, undefined, BoundaryId.toString(), undefined);
 
   if (!checkResult.BoundaryRoleId) {
@@ -67,6 +56,17 @@ export default defineEventHandler(async (event) => {
       statusCode: 403,
       code: "FORBIDDEN",
       message: "Insufficient permissions.",
+      requestId,
+    });
+  }
+
+  const boundary = await Boundary.findByPk(BoundaryId);
+
+  if (!boundary) {
+    throw createApiError({
+      statusCode: 404,
+      code: "NOT_FOUND",
+      message: "Boundary not found.",
       requestId,
     });
   }
