@@ -30,14 +30,14 @@
             >
             <select
               id="authMethods"
-              v-model="selectedAuthMethod"
+              v-model="selectedAuthKey"
               name="authMethods"
               class="block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base sm:text-sm"
             >
               <option
                 v-for="method in authMethods"
-                :key="method.name"
-                :value="method.name"
+                :key="method.key"
+                :value="method.key"
               >
                 {{ method.name }}
               </option>
@@ -55,14 +55,14 @@
               >
                 <div
                   v-for="method in authMethods"
-                  :key="method.name"
+                  :key="method.key"
                   :class="[
-                    method.current
+                    method.key === selectedAuthKey
                       ? 'border-indigo-500 text-indigo-600'
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700',
                     'cursor-pointer whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium',
                   ]"
-                  @click="selectedAuthMethod = method.name"
+                  @click="selectedAuthKey = method.key"
                 >
                   {{ method.name }}
                 </div>
@@ -154,46 +154,34 @@ const handleConsent = () => {
 };
 
 interface AuthMethod {
+  key: string;
   name: string;
   type: "local" | "ldap";
   providerId?: string;
-  current: boolean;
 }
 
-const defaultProvider = enabledAuth.value.defaultLoginProvider || "local";
+const localMethod: AuthMethod = { key: "local", name: "Local", type: "local" };
 
-const authMethods = ref<AuthMethod[]>(
-  [
-    enabledAuth.value.local ? { name: "Local", type: "local" as const, current: false } : null,
-    ...(enabledAuth.value.ldapProviders || []).map((p: { id: string; label: string }) => ({
-      name: p.label,
-      type: "ldap" as const,
-      providerId: p.id,
-      current: false,
-    })),
-  ].filter(Boolean) as AuthMethod[],
-);
+const authMethods = computed<AuthMethod[]>(() => [
+  ...(enabledAuth.value.local ? [localMethod] : []),
+  ...(enabledAuth.value.ldapProviders || []).map((p: { id: string; label: string }) => ({
+    key: `ldap:${p.id}`,
+    name: p.label,
+    type: "ldap" as const,
+    providerId: p.id,
+  })),
+]);
 
 const hasCredentialAuth = computed(() => authMethods.value.length > 0);
 
-const defaultMethod =
-  authMethods.value.find((m) =>
-    m.type === "local" ? defaultProvider === "local" : `ldap:${m.providerId}` === defaultProvider,
-  ) || authMethods.value[0];
-if (defaultMethod) defaultMethod.current = true;
-
-const selectedAuthMethod = ref(authMethods.value.find((m) => m.current)?.name || "Local");
-
-const selectedMethod = computed(
-  () => authMethods.value.find((m) => m.name === selectedAuthMethod.value) || ({ type: "local" } as AuthMethod),
+const defaultProvider = enabledAuth.value.defaultLoginProvider || "local";
+const selectedAuthKey = ref(
+  authMethods.value.find((m) => m.key === defaultProvider)?.key ?? authMethods.value[0]?.key ?? "local",
 );
 
-watch(selectedAuthMethod, (newMethod, oldMethod) => {
-  const deselect = authMethods.value.find((m) => m.name === oldMethod);
-  const select = authMethods.value.find((m) => m.name === newMethod);
-  if (deselect) deselect.current = false;
-  if (select) select.current = true;
-});
+const selectedMethod = computed(
+  () => authMethods.value.find((m) => m.key === selectedAuthKey.value) ?? localMethod,
+);
 </script>
 
 <style scoped>
