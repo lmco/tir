@@ -167,7 +167,7 @@
           class="flex-1"
         >
           <option value="claim">Standard Claim (Keycloak, Okta, Auth0…)</option>
-          <option value="scope">Custom Scope (TIR-specific)</option>
+          <option value="scope">Custom Scope</option>
         </AppSelect>
       </div>
       <div
