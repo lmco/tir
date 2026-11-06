@@ -1,24 +1,7 @@
 import { z } from "zod";
 
-export function firstString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-  return undefined;
-}
-
-export function h3String(opts?: { requiredMessage?: string }) {
-  return z
-    .any()
-    .transform(firstString)
-    .pipe(
-      z.string({
-        message: opts?.requiredMessage ?? "Value is required.",
-      }),
-    );
-}
-
-export function csvOfAllowedValues<T extends readonly string[]>(
-  allowed: T,
+export function csvOfAllowedValues<T extends string>(
+  allowed: readonly T[],
   opts?: {
     emptyMessage?: string;
     invalidMessage?: (invalid: string[]) => string;
@@ -53,6 +36,6 @@ export function csvOfAllowedValues<T extends readonly string[]>(
         return z.NEVER;
       }
 
-      return values;
+      return values as T[];
     });
 }

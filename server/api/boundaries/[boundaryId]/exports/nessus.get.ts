@@ -12,6 +12,7 @@ import { NessusCsvHeaders, type HeaderLabel } from "~/types/nessus";
 import { parseOrThrow, createApiError } from "~/server/utils/apiValidation";
 import { H3String, H3OptionalString } from "~/server/utils/validation/h3";
 import { BoundaryIdSchema } from "~/server/utils/validation/fields";
+import { csvOfAllowedValues } from "~/server/utils/validation/csv";
 
 const headerValues = Object.values(NessusCsvHeaders) as HeaderLabel[];
 
@@ -21,25 +22,12 @@ const ParamsSchema = z
   })
   .strict();
 
-const allowedHeaders = new Set<string>(headerValues);
-
-export const SelectedHeadersSchema = H3String.transform((s) =>
-  s
-    .split(",")
-    .map((h) => h.trim())
-    .filter(Boolean),
-)
-  .pipe(z.array(z.string()).min(1, { message: "No headers selected." }))
-  .superRefine((headers, ctx) => {
-    const invalid = headers.filter((h) => !allowedHeaders.has(h));
-    if (invalid.length > 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: `Invalid header(s): ${invalid.join(", ")}`,
-      });
-    }
-  })
-  .transform((headers) => headers as HeaderLabel[]);
+const SelectedHeadersSchema = H3String.pipe(
+  csvOfAllowedValues(headerValues, {
+    emptyMessage: "No headers selected.",
+    invalidMessage: (invalid) => `Invalid header(s): ${invalid.join(", ")}`,
+  }),
+);
 
 const QuerySchema = z
   .object({
