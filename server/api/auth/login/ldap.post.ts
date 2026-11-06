@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
       throw new H3Error("Invalid LDAP credentials");
     }
 
-    return { success: true, message: "Authenticated via LDAP", sessionId: result.sessionId, user: result.user };
+    return { success: true, message: "Authenticated via LDAP", sessionId: result.sessionId, userId: result.user.id };
   } catch (error) {
     let errorMessage = "An unknown error occurred";
     if (error instanceof H3Error) {
