@@ -145,6 +145,15 @@ export function storedOIDCSecret(submitted: Record<string, unknown>): Promise<st
   return storedSecretIfUnchanged(OIDC_INDEX_KEY, oidcKey, OIDC_PROVIDER_SCHEMA, "secret", submitted, ["url", "clientId"]);
 }
 
+export function hasEnabledProvider(cfg: Partial<AuthConfig>): boolean {
+  return (
+    cfg.local?.enable === true ||
+    (cfg.ldap ?? []).some((p) => p.enable) ||
+    (cfg.oidc ?? []).some((p) => p.enable) ||
+    (cfg.oauth ?? []).some((p) => p.enable)
+  );
+}
+
 export async function loadAuthConfig(): Promise<AuthConfig> {
   const [local, ldapIds, oidcIds, oauthIds, defaultLoginProvider] = await Promise.all([
     loadLocalConfig(),

@@ -3,6 +3,7 @@ import { AuthProvider } from "./authProvider";
 import { authProviderRegistry } from "./authProviderRegistry";
 import { type AuthConfig } from "~/types/auth";
 import { getRawConfigValue } from "~/server/utils/config/tirConfig";
+import { hasEnabledProvider } from "~/server/utils/config/authConfig";
 
 export class AuthService {
   private readonly providers: Map<string, AuthProvider> = new Map();
@@ -22,11 +23,7 @@ export class AuthService {
     this.providers.clear();
     this.config = cfg;
 
-    const anyOtherEnabled =
-      cfg.ldap.some((p) => p.enable) ||
-      cfg.oidc.some((p) => p.enable) ||
-      cfg.oauth.some((p) => p.enable);
-    const noProvidersEnabled = !cfg.local.enable && !anyOtherEnabled;
+    const noProvidersEnabled = !hasEnabledProvider(cfg);
 
     if (noProvidersEnabled) {
       logger.alert({
