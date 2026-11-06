@@ -1,0 +1,18 @@
+import { deleteCookie } from "h3";
+import type { H3Event } from "h3";
+
+export const AUTH_COOKIES = {
+  STATE: "pkce_state",
+  NONCE: "oidc_nonce",
+  CODE_VERIFIER: "oidc_code_verifier",
+  TEST_MODE: "tir_auth_test",
+} as const;
+
+export function clearAuthCookie(event: H3Event, name: string) {
+  deleteCookie(event, name, { path: "/" });
+}
+
+/** Drops every cookie a previous sign-in or test attempt may have left, including an unfinished test. */
+export function clearLoginCookies(event: H3Event) {
+  for (const name of Object.values(AUTH_COOKIES)) clearAuthCookie(event, name);
+}
