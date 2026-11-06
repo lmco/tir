@@ -1,10 +1,10 @@
 import { defineEventHandler, getQuery, setCookie, sendRedirect } from "h3";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
-import { AUTH_COOKIES, clearAuthCookie } from "~/server/utils/authCookies";
+import { AUTH_COOKIES, clearLoginCookies } from "~/server/utils/authCookies";
 
 export default defineEventHandler(async (event) => {
   try {
-    clearAuthCookie(event, AUTH_COOKIES.STATE);
+    clearLoginCookies(event);
 
     const authService = getAuthServiceManager();
     const query = getQuery(event);

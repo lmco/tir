@@ -11,3 +11,8 @@ export const AUTH_COOKIES = {
 export function clearAuthCookie(event: H3Event, name: string) {
   deleteCookie(event, name, { path: "/" });
 }
+
+/** Drops every cookie a previous sign-in or test attempt may have left, including an unfinished test. */
+export function clearLoginCookies(event: H3Event) {
+  for (const name of Object.values(AUTH_COOKIES)) clearAuthCookie(event, name);
+}
