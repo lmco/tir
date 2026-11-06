@@ -32,7 +32,7 @@ const SelectedHeadersSchema = H3String.pipe(
 const QuerySchema = z
   .object({
     selectedHeaders: SelectedHeadersSchema,
-    factorOverrides: H3OptionalString.transform((s) => s?.toLowerCase() !== "false"),
+    factorOverrides: H3OptionalString.transform((s) => s?.toLowerCase() !== "false").default(true),
   })
   .strict();
 

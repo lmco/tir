@@ -13,4 +13,5 @@ export const H3OptionalString = z
   .transform(firstString)
   .transform((s) => (s === undefined ? undefined : s.trim()))
   .transform((s) => (s === "" ? undefined : s))
-  .pipe(z.string().optional());
+  .pipe(z.string().optional())
+  .optional();
