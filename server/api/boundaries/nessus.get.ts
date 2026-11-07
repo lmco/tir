@@ -17,11 +17,6 @@ export default defineEventHandler(async (event) => {
     '</api/boundaries/{id}/exports/nessus>; rel="successor-version"',
   );
 
-  logger.alert({
-    service: "API",
-    message: "Deprecated endpoint used: /api/boundaries/nessus",
-  });
-
   const query = getQuery(event);
 
   if (!query.BoundaryId) {
@@ -48,6 +43,11 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Insufficient Permissions.",
     });
   }
+
+  logger.warning({
+    service: "API",
+    message: `Deprecated endpoint /api/boundaries/nessus used by ${checkResult.user.email} for boundary ${BoundaryId}`,
+  });
   if (!query.selectedHeaders) {
     throw createError({
       statusCode: 400,
