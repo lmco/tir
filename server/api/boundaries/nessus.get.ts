@@ -11,11 +11,6 @@ import { NessusOverride } from "~/db/models/nessusOverride";
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, "Deprecation", "true");
-  setResponseHeader(
-    event,
-    "Link",
-    '</api/boundaries/{id}/exports/nessus>; rel="successor-version"',
-  );
 
   const query = getQuery(event);
 
@@ -34,6 +29,15 @@ export default defineEventHandler(async (event) => {
       statusMessage: `Invalid BoundaryId ${query.BoundaryId}`,
     });
   }
+
+  const successorQuery = new URLSearchParams();
+  for (const key of ["selectedHeaders", "factorOverrides"] as const) {
+    if (query[key]) successorQuery.set(key, query[key].toString());
+  }
+  const successorPath = `/api/boundaries/${BoundaryId}/exports/nessus`;
+  const successorSearch = successorQuery.toString();
+  const successorUrl = successorSearch ? `${successorPath}?${successorSearch}` : successorPath;
+  setResponseHeader(event, "Link", `<${successorUrl}>; rel="successor-version"`);
 
   const checkResult = await userCheck(event, undefined, query.BoundaryId?.toString(), undefined);
 
