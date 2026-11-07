@@ -136,7 +136,7 @@
                       <MenuItems
                         class="absolute right-0 z-10 mt-2 w-72 origin-top-right rounded-md bg-white pt-2 shadow-lg ring-1 ring-black/5 focus:outline-none dark:bg-gray-700"
                       >
-                        <ul role="list" class="max-h-72 divide-y divide-gray-200 overflow-y-auto">
+                        <ul role="list" class="max-h-72 divide-y divide-gray-200 overflow-y-auto dark:divide-gray-600">
                           <MenuItem
                             v-for="alert in userBell"
                             :key="alert.id"
@@ -159,8 +159,8 @@
                             <div class="mx-2 flex min-w-0 gap-x-4">
                               <div />
                               <div class="min-w-0 flex-auto">
-                                <p class="text-sm font-semibold leading-6 text-gray-900">No Alerts</p>
-                                <p class="mt-1 truncate text-xs leading-5 text-gray-500">:(</p>
+                                <p class="text-sm font-semibold leading-6 text-gray-900 dark:text-white">No Alerts</p>
+                                <p class="mt-1 truncate text-xs leading-5 text-gray-500 dark:text-gray-200">:(</p>
                               </div>
                             </div>
                           </MenuItem>
