@@ -7,21 +7,27 @@ interface ApiRequestParams {
   body?: any;
 }
 
-async function apiRequest(params: ApiRequestParams): Promise<any> {
+async function apiRequest(params: ApiRequestParams): Promise<Response> {
+  const headers: Record<string, string> = { ...params.headers };
+  if (params.body !== undefined) headers["Content-Type"] ??= "application/json";
+
   const response = await fetch(params.url, {
     method: params.method || "GET",
-    headers: params.headers || {},
-    body: params.body ? JSON.stringify(params.body) : undefined,
+    headers,
+    body: params.body !== undefined ? JSON.stringify(params.body) : undefined,
   });
   const notificationStore = useNotificationStore();
   if (!response.ok) {
-    const errorData = await response.json();
-    switch (errorData.data.code) {
+    // Not every error body comes from createApiError (legacy createError routes, proxy HTML pages).
+    const errorData = await response.json().catch(() => null);
+    const data = errorData?.data;
+    const message = data?.message ?? errorData?.message ?? response.statusText;
+    switch (data?.code) {
       case "VALIDATION_ERROR":
         notificationStore.addNotification({
           type: "error",
           title: "Validation Error",
-          message: `${errorData.message}: ${errorData.data.issues
+          message: `${message}: ${(data.issues ?? [])
             .map((issue: any) => issue.message)
             .join(", ")}`,
         });
@@ -30,28 +36,28 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
         notificationStore.addNotification({
           type: "error",
           title: "Unauthorized",
-          message: errorData.message,
+          message,
         });
         break;
       case "FORBIDDEN":
         notificationStore.addNotification({
           type: "error",
           title: "Forbidden",
-          message: errorData.message,
+          message,
         });
         break;
       case "NOT_FOUND":
         notificationStore.addNotification({
           type: "error",
           title: "Not Found",
-          message: errorData.message,
+          message,
         });
         break;
       case "INTERNAL_ERROR":
         notificationStore.addNotification({
           type: "error",
           title: "Internal Error",
-          message: `Request ID: ${errorData.data.requestId}`,
+          message: `Request ID: ${data.requestId}`,
           persistent: true,
         });
         break;
@@ -59,7 +65,7 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
         notificationStore.addNotification({
           type: "error",
           title: "Upstream Error",
-          message: `Request ID: ${errorData.data.requestId}`,
+          message: `Request ID: ${data.requestId}`,
           persistent: true,
         });
         break;
@@ -68,7 +74,7 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
         notificationStore.addNotification({
           type: "error",
           title: "An Error Occurred",
-          message: errorData.message,
+          message,
         });
         break;
     }
@@ -76,7 +82,7 @@ async function apiRequest(params: ApiRequestParams): Promise<any> {
     throw new Error(`API request failed with status ${response.status}`);
   }
 
-  return await response.json();
+  return response;
 }
 
 export default apiRequest;
