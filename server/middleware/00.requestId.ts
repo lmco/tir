@@ -1,11 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { defineEventHandler, getHeader, setHeader } from "h3";
+import { normalizeRequestId } from "../utils/requestId";
 
 export default defineEventHandler((event) => {
-  const incoming = getHeader(event, "x-request-id");
-
-  const requestId =
-    typeof incoming === "string" && incoming.trim().length > 0 ? incoming.trim() : randomUUID();
+  const requestId = normalizeRequestId(getHeader(event, "x-request-id"));
 
   event.context.requestId = requestId;
 
