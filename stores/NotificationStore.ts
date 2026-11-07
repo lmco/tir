@@ -46,31 +46,29 @@ export const useNotificationStore = defineStore("NotificationStore", {
       console.log("Adding notification to queue:", note);
       this.queue.push(note);
 
-      if (this.queue.length === 1 && note.persistent !== true) {
+      if (!this.timeoutHandle) {
         this._scheduleNextRemoval();
       }
     },
     removeNotification() {
       this.queue.shift();
-      this._clearScheduledTimeout();
-      if (this.queue.length > 0 && this.queue[0].persistent !== true) {
-        this._scheduleNextRemoval();
-      }
+      this._scheduleNextRemoval();
     },
     removeNotificationById(id: number) {
       const idx = this.queue.findIndex((n) => n.id === id);
       if (idx !== -1) {
         this.queue.splice(idx, 1);
-        this._clearScheduledTimeout();
-        if (this.queue.length > 0) {
-          this._scheduleNextRemoval();
-        }
+        this._scheduleNextRemoval();
       }
     },
+    // Auto-dismiss the oldest non-persistent notification; persistent ones wait for the user.
     _scheduleNextRemoval() {
       this._clearScheduledTimeout();
+      const next = this.queue.find((n) => n.persistent !== true);
+      if (!next) return;
       this.timeoutHandle = setTimeout(() => {
-        this.removeNotification();
+        this.timeoutHandle = null;
+        this.removeNotificationById(next.id);
       }, this.timeout);
     },
     _clearScheduledTimeout() {
