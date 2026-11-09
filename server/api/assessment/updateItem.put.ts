@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { Assessment, AssessmentItem } from "../../../db/models";
+import { Assessment, AssessmentItem, System } from "../../../db/models";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -18,24 +18,40 @@ export default defineEventHandler(async (event) => {
           {
             model: Assessment,
             where: { succeededByAssessmentId: null },
+            required: true,
+            include: [
+              {
+                model: System,
+                where: { BoundaryId: body.BoundaryId },
+                required: true,
+              },
+            ],
           },
         ],
       });
       if (assessmentItem) {
-        for (const key in body) {
-          assessmentItem.setDataValue(key, body[key]);
-        }
+        assessmentItem.set({
+          status: body.status,
+          finding_details: body.finding_details,
+          comments: body.comments,
+          severityOverride: body.severityOverride,
+          severityOverrideJustification: body.severityOverrideJustification,
+        });
+
         assessmentItem.Assessment?.setDataValue("lastUpdate", body.lastUpdate);
+
         await assessmentItem.save();
 
         if (assessmentItem.Assessment) {
           await assessmentItem.Assessment.save();
         }
 
-
         return { error: false };
       } else {
-        return { error: true, errorMsg: `Assessment Item: ${body.id} not found.` };
+        return {
+          error: true,
+          errorMsg: `Assessment Item: ${body.id} not found.`,
+        };
       }
     }
   } else {

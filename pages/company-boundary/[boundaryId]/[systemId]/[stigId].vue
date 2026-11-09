@@ -595,8 +595,6 @@ const { data: systems } = await useFetch("/api/systems/list", {
 });
 const system = systems.value.find((o) => o.id === parseInt(route.params.systemId));
 
-// Filter Items
-
 const openCount = ref(getAssessment.value.filter((o) => o.status === "Open").length);
 const notAFindingCount = ref(getAssessment.value.filter((o) => o.status === "NotAFinding").length);
 const notApplicableCount = ref(getAssessment.value.filter((o) => o.status === "Not_Applicable").length);
@@ -659,7 +657,6 @@ const statusFilter = [
   },
 ];
 const selectedFilter = selectedFilterStore;
-// console.log(selectedFilter.value)
 const statusFilterNames = ["Open", "NotAFinding", "Not_Applicable", "Not_Reviewed"];
 
 const severityFilterNames = ["CAT I", "CAT II", "CAT III"];
@@ -689,7 +686,6 @@ function addFilter(name) {
   }
 }
 
-//  From STIG
 const currentSystem = {
   SystemId,
 };
@@ -710,11 +706,9 @@ const listOfChecks = getAssessment.value.sort((a, b) => {
   // names must be equal
   return 0;
 });
-//  console.log("List of Checks", listOfChecks)
 
 const stigListValue = systemStigList.value.findIndex((o) => o.id === StigId.value);
 
-/// /////////// Check View
 const checkData = ref(assessmentId.value);
 
 function updateVar() {
@@ -738,9 +732,7 @@ function updateVar() {
 
   severity.value = catOptions[startingCatPosition.value] || catOptions[0];
 
-  editSeverity.value = check.severityOverride
-    ? severityMap.get(check.severityOverride)
-    : null;
+  editSeverity.value = check.severityOverride ? severityMap.get(check.severityOverride) : null;
 }
 
 function findCheck(checkId) {
@@ -764,7 +756,9 @@ severityMap.set("medium", "CAT II");
 severityMap.set("high", "CAT I");
 
 function getCheckSeverity(check) {
-  return severityMap.get(check.severityOverride) || severityMap.get(check.StigDatum.severity);
+  const severityLock = check.StigDatum.StigOverrides?.find((override) => override.type === "severity");
+
+  return severityLock?.value || severityMap.get(check.severityOverride) || severityMap.get(check.StigDatum.severity);
 }
 
 const checkStatus = ref(listOfChecks[checkData.value].status);
@@ -781,7 +775,6 @@ const startingCatPosition = ref(
 
 const severity = ref(catOptions[startingCatPosition.value] || catOptions[0]);
 
-/// /////////// Edit API
 const editId = ref(listOfChecks[assessmentId.value].id);
 const editFinding = ref(listOfChecks[assessmentId.value].finding_details);
 const editComments = ref(listOfChecks[assessmentId.value].comments);
@@ -792,7 +785,6 @@ const editSeverity = ref(
     ? severityMap.get(listOfChecks[checkData.value].severityOverride)
     : null,
 );
-
 
 async function editAssessmentApi() {
   try {
@@ -815,14 +807,11 @@ async function editAssessmentApi() {
     setTimeout(() => (showErrorNotification.value = false), 6000);
   }
 }
-/// /// Back Button
 async function backButton() {
   await navigateTo("/company-boundary/" + route.params.boundaryId + "/" + route.params.systemId);
 }
-/// ////// Finding Status
 
 function getStatus(findingStatus) {
-  // console.log('Finding Status',findingStatus)
 
   if (findingStatus != null) {
     const openStatus = findingStatus.filter((item) => {
@@ -856,7 +845,6 @@ function getStatus(findingStatus) {
       notApplicableStatus[0].count,
       notReviewed[0].count,
     );
-    // console.log('Final Status',finalStatus)
     return finalStatus;
   }
 }
