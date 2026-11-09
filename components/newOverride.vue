@@ -278,7 +278,7 @@ function mapSeverity(severityLevel) {
     Critical: 4,
   };
 
-  return severityMap[severityLevel] || null;
+  return severityMap[severityLevel] ?? null; // Fall back only for null or undefined
 }
 
 async function saveOverrides() {
@@ -348,7 +348,7 @@ async function saveOverrides() {
         }
       } else if (lock.id) {
         if (overrideClass.value === "nessus") {
-          await saveRequest("Failed to remove Nessus override lock", () =>
+          const removed = await saveRequest("Failed to remove Nessus override lock", () =>
             $fetch("/api/vuln/removeLock", {
               method: "DELETE",
               body: {
@@ -357,13 +357,13 @@ async function saveOverrides() {
               },
             }),
           );
+          if (removed) lock.id = null;
         }
         if (overrideClass.value === "stig") {
           const removed = await saveRequest("Failed to remove STIG override lock", () =>
             $fetch("/api/override/removeLock", {
               method: "DELETE",
               body: {
-                id: lock.id,
                 systemId: system.systemId,
                 overrideType: lock.type,
                 stigDatumId: system.overrides.id,
