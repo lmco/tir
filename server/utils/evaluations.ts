@@ -128,11 +128,7 @@ export async function createEvaluation(
     },
   });
 
-  if (initialCheck) {
-    console.log("Error.  Evaluation already exists.");
-  } else {
-    console.log("Evaluation not found. Need to make one.");
-
+  if (!initialCheck) {
     const newEvaluation = await Evaluation.create({
       BoundaryId: boundaryId,
       StigId: stigId,

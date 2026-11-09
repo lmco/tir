@@ -1,6 +1,6 @@
 import { checkBoundary } from "../../../server/utils/stigLibrary";
 
-import { Boundary } from "../../../db/models";
+import { Boundary, StigLibrary } from "../../../db/models";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -12,6 +12,21 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 404,
       statusMessage: `No Boundary found for id: ${body.BoundaryId}.`,
+    });
+  }
+
+  if (!body.StigLibraryId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Missing required parameter: StigLibraryId.",
+    });
+  }
+  const library = await StigLibrary.findByPk(body.StigLibraryId);
+  if (!library) {
+    logger.error(`No STIG Library found for id: ${body.StigLibraryId}.`);
+    throw createError({
+      statusCode: 404,
+      statusMessage: `No STIG Library found for id: ${body.StigLibraryId}.`,
     });
   }
 

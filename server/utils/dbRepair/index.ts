@@ -17,7 +17,8 @@ export async function runDbRepairs(repairs: DbRepair[] = dbRepairs): Promise<voi
         message: `${repair.name}: repaired ${repaired} in ${Date.now() - started} ms`,
       });
     } catch (error) {
-      logger.error({ service: "dbRepair", message: `${repair.name} failed: ${error}` });
+      const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+      logger.error({ service: "dbRepair", message: `${repair.name} failed: ${detail}` });
     }
   }
 }

@@ -1446,7 +1446,7 @@ function uniqueCompany(id, name, parentId) {
       addBreadcrumb({ name, tierId: id, parentId });
     }
   } else {
-    console.error("Breadcrumb Error: Not unique ID");
+    console.log("Not unique ID");
   }
 }
 
