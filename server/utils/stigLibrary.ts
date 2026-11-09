@@ -94,17 +94,18 @@ async function migrateAssessment(
   { system, assessment, oldStig, newStig }: AssessmentMigration,
 ): Promise<void> {
   if (oldStig && newStig && oldStig.id === newStig.id) return;
-  if (oldStig) {
-    await system.removeStig(oldStig);
+  if (!newStig) {
+    if (oldStig) await system.removeStig(oldStig);
+    return;
   }
-  if (!newStig) return;
 
-  await system.addStig(newStig);
   const newAssessment = await createBlankAssessment(assessment.SystemId, newStig.id);
   await createEvaluation(boundaryId, newStig.id);
+  await copyCheckResults(assessment.id, newAssessment.id);
   assessment.succeededByAssessmentId = newAssessment.id;
   await assessment.save();
-  await copyCheckResults(assessment.id, newAssessment.id);
+  await system.addStig(newStig);
+  if (oldStig) await system.removeStig(oldStig);
 }
 
 export const migrateBoundary = async (
