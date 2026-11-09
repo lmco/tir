@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { Assessment, Evaluation, System } from "../../../db/models";
+import { Assessment, Evaluation, Stig, System } from "../../../db/models";
 import { createEvaluation } from "../evaluations";
 import type { DbRepair } from ".";
 
@@ -11,7 +11,22 @@ async function currentAssessmentPairs(): Promise<Pair[]> {
   const rows = (await Assessment.findAll({
     attributes: ["StigId"],
     where: { succeededByAssessmentId: { [Op.is]: null } },
-    include: [{ model: System, attributes: ["BoundaryId"], required: true }],
+    include: [
+      {
+        model: System,
+        attributes: ["BoundaryId"],
+        required: true,
+        include: [
+          {
+            model: Stig,
+            attributes: [],
+            through: { attributes: [] },
+            where: { id: { [Op.col]: "Assessment.StigId" } },
+            required: true,
+          },
+        ],
+      },
+    ],
     raw: true,
   })) as unknown as { StigId: number; "System.BoundaryId": number }[];
 
@@ -25,11 +40,7 @@ async function currentAssessmentPairs(): Promise<Pair[]> {
 
 async function pairsWithoutEvaluation(pairs: Pair[]): Promise<Pair[]> {
   if (pairs.length === 0) return [];
-  const existing = await Evaluation.findAll({
-    attributes: ["BoundaryId", "StigId"],
-    where: { [Op.or]: pairs },
-    raw: true,
-  });
+  const existing = await Evaluation.findAll({ attributes: ["BoundaryId", "StigId"], raw: true });
   const have = new Set(existing.map(key));
   return pairs.filter((pair) => !have.has(key(pair)));
 }
