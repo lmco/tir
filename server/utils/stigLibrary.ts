@@ -95,7 +95,10 @@ async function migrateAssessment(
 ): Promise<void> {
   if (oldStig && newStig && oldStig.id === newStig.id) return;
   if (!newStig) {
-    if (oldStig) await system.removeStig(oldStig);
+    if (oldStig) {
+      await system.removeStig(oldStig);
+      await Assessment.destroy({ where: { SystemId: system.id, StigId: oldStig.id } });
+    }
     return;
   }
 
