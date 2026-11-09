@@ -373,11 +373,8 @@ async function saveOverrides() {
             removed = true;
           } catch (error) {
             const statusCode = error?.statusCode ?? error?.status;
-            const statusMessage = error?.data?.statusMessage ?? error?.statusMessage;
-            if (
-              statusCode === 404 &&
-              statusMessage === "STIG override already unlocked (combined key not found)."
-            ) {
+            const errorCode = error?.data?.data?.code;
+            if (statusCode === 404 && errorCode === "STIG_OVERRIDE_ALREADY_UNLOCKED") {
               removed = true;
             } else {
               failed = true;
