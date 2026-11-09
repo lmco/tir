@@ -45,18 +45,24 @@ async function* currentAssessments(
 ): AsyncGenerator<AssessmentMigration> {
   const boundarySystems = await System.findAll({ where: { BoundaryId: boundaryId } });
   for (const system of boundarySystems) {
-    const linkedStigs = await Stig.findAll({
-      attributes: ["id"],
-      include: [
-        { model: System, attributes: [], where: { id: system.id }, through: { attributes: [] } },
-      ],
-    });
     const assessments = await Assessment.findAll({
-      where: {
-        SystemId: system.id,
-        StigId: linkedStigs.map((stig) => stig.id),
-        succeededByAssessmentId: { [Op.is]: null },
-      },
+      where: { SystemId: system.id, succeededByAssessmentId: { [Op.is]: null } },
+      include: [
+        {
+          model: System,
+          attributes: [],
+          required: true,
+          include: [
+            {
+              model: Stig,
+              attributes: [],
+              through: { attributes: [] },
+              where: { id: { [Op.col]: "Assessment.StigId" } },
+              required: true,
+            },
+          ],
+        },
+      ],
     });
     for (const assessment of assessments) {
       const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });

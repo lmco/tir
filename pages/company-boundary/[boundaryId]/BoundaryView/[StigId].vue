@@ -288,7 +288,7 @@
                   <DisclosurePanel
                     class="h-84 text-md w-full rounded-b-lg bg-gray-300/5 px-4 py-4 text-left font-medium text-white focus:outline-none focus-visible:ring focus-visible:ring-purple-500 focus-visible:ring-opacity-75"
                   >
-                    <PoamFields :evaluation-item="evaluationItem" />
+                    <PoamFields v-if="evaluationItem" :evaluation-item="evaluationItem" />
                   </DisclosurePanel>
                 </transition>
               </Disclosure>
