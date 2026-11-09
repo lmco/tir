@@ -301,6 +301,7 @@ const { data: currentUser, error: userError } = useAsyncData(
   { default: () => null },
 );
 
+// Fetch alerts only after currentUser is available
 const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
   "currentAlert",
   async () => {
@@ -311,20 +312,17 @@ const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
       credentials: "include",
     });
   },
-  { server: false, default: () => null, watch: [currentUser] },
+  { server: false, watch: [currentUser] }, // Re-fetch whenever `currentUser` changes
 );
-
-const { data: currentAbout } = useAsyncData(
-  "currentAbout",
-  async () => {
-    try {
-      return await $fetch("/api/config/about", { method: "GET" });
-    } catch {
-      return null;
-    }
-  },
-  { default: () => null },
-);
+// Fetch about data
+const { data: currentAbout } = useAsyncData("currentAbout", async () => {
+  try {
+    return await $fetch("/api/config/about", { method: "GET" });
+  } catch (error) {
+    console.error("Failed to fetch about data:", error);
+    return {}; // Avoid returning null (triggers Nuxt useAsyncData warning)
+  }
+});
 
 const userErrorStatus = computed(
   () => userError.value?.statusCode ?? userError.value?.status ?? userError.value?.response?.status,
