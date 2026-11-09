@@ -45,9 +45,9 @@ export default defineEventHandler(async (event) => {
   if (removed === 0) {
     throw createError({
       statusCode: 404,
-      statusMessage: "STIG Override not found.",
+      statusMessage: "STIG override already unlocked (combined key not found).",
     });
   }
-  
+
   return { success: true };
 });

@@ -360,16 +360,30 @@ async function saveOverrides() {
           if (removed) lock.id = null;
         }
         if (overrideClass.value === "stig") {
-          const removed = await saveRequest("Failed to remove STIG override lock", () =>
-            $fetch("/api/override/removeLock", {
+          let removed = false;
+          try {
+            await $fetch("/api/override/removeLock", {
               method: "DELETE",
               body: {
                 systemId: system.systemId,
                 overrideType: lock.type,
                 stigDatumId: system.overrides.id,
               },
-            }),
-          );
+            });
+            removed = true;
+          } catch (error) {
+            const statusCode = error?.statusCode ?? error?.status;
+            const statusMessage = error?.data?.statusMessage ?? error?.statusMessage;
+            if (
+              statusCode === 404 &&
+              statusMessage === "STIG override already unlocked (combined key not found)."
+            ) {
+              removed = true;
+            } else {
+              failed = true;
+              alertsStore.reportError("Failed to remove STIG override lock", error);
+            }
+          }
           if (removed) lock.id = null;
         }
       }
