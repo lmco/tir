@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-full">
     <SiteBanner v-if="true" />
-    <div v-if="isDataReady">
+    <div>
       <!-- Static Navigation Bar -->
       <nav class="bg-white shadow dark:bg-gray-800">
         <div class="mx-auto max-w-7xl sm:px-6 lg:px-8">
@@ -220,7 +220,7 @@
                           <tr
                             v-for="alert in sortedAlerts"
                             :key="alert.id"
-                            :class="{ 'bg-gray-200 dark:bg-gray-800': !alert.TirNotifications_Users[0].read }"
+                            :class="{ 'bg-gray-200 dark:bg-gray-800': !alert.TirNotifications_Users?.[0]?.read }"
                           >
                             <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-800 dark:text-gray-300">
                               {{ formartAlertDate(alert.creationDate) }}
@@ -253,6 +253,13 @@
           </div>
         </div>
       </nav>
+      <div v-if="hasUserError" role="alert" class="mx-auto mt-4 max-w-7xl px-4 sm:px-6 lg:px-8">
+        <p
+          class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
+        >
+          Failed to load user profile.
+        </p>
+      </div>
       <header class="py-10">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <h1 class="text-3xl font-bold tracking-tight text-gray-800 dark:text-white">
@@ -260,9 +267,6 @@
           </h1>
         </div>
       </header>
-    </div>
-    <div v-else class="flex min-h-full items-center justify-center">
-      <p>Loading...</p>
     </div>
     <Notifications />
   </div>
@@ -275,7 +279,7 @@ import { ref, computed, watch } from "vue";
 import { DateTime } from "luxon";
 import inflection from "inflection";
 import { useRoute, useRouter } from "vue-router";
-import { useColorMode, useId, useAsyncData } from "#imports";
+import { useColorMode, useId, useAsyncData, useRequestFetch, navigateTo } from "#imports";
 import { useBreadcrumbStore } from "~~/stores/Breadcrumb";
 import { useAliasStore } from "~/stores/AliasStorage";
 import { useAlertsStore } from "~~/stores/AlertsStore";
@@ -289,24 +293,14 @@ const breadStore = useBreadcrumbStore();
 const aliasStore = useAliasStore();
 const alertsStore = useAlertsStore();
 const showPopup = ref(false);
+const fetchWithCookies = useRequestFetch();
 
 const { data: currentUser, error: userError } = useAsyncData(
   "currentUser",
-  async () => {
-    try {
-      return await $fetch("/api/auth/currentUser", {
-        method: "GET",
-        credentials: "include",
-      });
-    } catch (err) {
-      console.error("Failed to fetch currentUser:", err);
-      return null;
-    }
-  },
-  { server: false },
+  () => fetchWithCookies("/api/auth/currentUser", { method: "GET", credentials: "include" }),
+  { default: () => null },
 );
 
-// Fetch alerts only after currentUser is available
 const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
   "currentAlert",
   async () => {
@@ -317,40 +311,50 @@ const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
       credentials: "include",
     });
   },
-  { watch: [currentUser] }, // Re-fetch whenever `currentUser` changes
+  { server: false, default: () => null, watch: [currentUser] },
 );
-// Fetch about data
-const { data: currentAbout } = useAsyncData("currentAbout", async () => {
-  try {
-    return await $fetch("/api/config/about", { method: "GET" });
-  } catch (error) {
-    console.error("Failed to fetch about data:", error);
-    return {}; // Avoid returning null (triggers Nuxt useAsyncData warning)
-  }
-});
 
-// Check if data is ready
-const isDataReady = computed(() => !!currentUser.value && !userError.value && navigation.value.length > 0);
+const { data: currentAbout } = useAsyncData(
+  "currentAbout",
+  async () => {
+    try {
+      return await $fetch("/api/config/about", { method: "GET" });
+    } catch {
+      return null;
+    }
+  },
+  { default: () => null },
+);
 
-// Theme handling
+const userErrorStatus = computed(
+  () => userError.value?.statusCode ?? userError.value?.status ?? userError.value?.response?.status,
+);
+const hasUserError = computed(() => Boolean(userError.value) && userErrorStatus.value !== 401);
+
 watch(
-  currentUser,
-  (newUser) => {
-    if (newUser?.Theme) {
-      colorMode.preference = newUser.Theme.name.toLowerCase();
-    } else {
-      colorMode.preference = "system";
+  userErrorStatus,
+  (status) => {
+    if (status === 401) {
+      alertsStore.stopPolling();
+      navigateTo("/");
     }
   },
   { immediate: true },
 );
 
-const isAdmin = computed(() => currentUser.value?.UserRole?.name === "Admin" || false);
+// Theme handling
+watch(
+  currentUser,
+  (newUser) => {
+    colorMode.preference = newUser?.Theme?.name?.toLowerCase() || "system";
+  },
+  { immediate: true },
+);
+
+const isAdmin = computed(() => currentUser.value?.UserRole?.name === "Admin");
 
 const navigation = computed(() => {
   try {
-    if (!currentUser.value) return [];
-
     const path = route.fullPath;
 
     const items = [
@@ -394,7 +398,7 @@ const navigation = computed(() => {
 const userNavigation = computed(() => {
   if (!currentUser.value) return [];
   return [
-    { name: "Your Profile", href: "/profile/" + (currentUser.value.email || "unknown") },
+    { name: "Your Profile", href: "/profile/" + (currentUser.value?.email || "unknown") },
     { name: "Sign out", onClick: logoutUser },
   ];
 });
@@ -513,6 +517,7 @@ const deleteTheAlert = async (alertId) => {
 watch(
   currentUser,
   (newUser) => {
+    if (import.meta.server) return;
     if (newUser?.id) {
       alertsStore.startPolling(newUser.id);
     } else {
