@@ -10,8 +10,8 @@ import {
   type BelongsToManyAddAssociationMixin,
   type ForeignKey,
 } from "sequelize";
-import {Evaluation} from './evaluation';
-import {StigData} from './stigData';
+import type { Evaluation } from "./evaluation";
+import type { StigData } from "./stigData";
 import type { Milestone, User } from ".";
 import type { levels } from "~/types/evaluation";
 
@@ -61,18 +61,10 @@ EvaluationItem.init(
     EvaluationId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: Evaluation,
-        key: 'id',
-      },
     },
     StigDatumId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: StigData,
-        key: 'id',
-      },
     },
     Office_Org: {
       type: DataTypes.TEXT,

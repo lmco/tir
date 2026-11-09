@@ -101,7 +101,7 @@
                         @click="
                           [
                             findCheck(check.id),
-                            (editId = check.EvaluationItems[0].id),
+                            (editId = check.EvaluationItems?.[0]?.id ?? null),
                             (editFinding = updateFinding(check.AssessmentItems)),
                             (editComments = updateComment(check.AssessmentItems)),
                             setFields(check),
@@ -295,7 +295,8 @@
 
               <div class="mt-4 flex justify-end">
                 <button
-                  class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!editId"
                   @click="editAssessmentApi()"
                 >
                   Save
@@ -496,7 +497,7 @@ async function backButton() {
 // POAM Fields
 
 function setFields(check) {
-  evaluationItem.value = check.EvaluationItems[0];
+  evaluationItem.value = check.EvaluationItems?.[0] ?? null;
   checkStatus.value = listOfChecks.value[assessmentId.value].status;
   startingPosition.value = statusOptions.findIndex((o) => o.title === checkStatus.value);
   selected.value = statusOptions[startingPosition.value];
@@ -508,7 +509,7 @@ const editFinding = ref();
 const editComments = ref();
 let findingList = "";
 let commentList = "";
-const assessmentList = listOfChecks.value[assessmentId.value].AssessmentItems;
+const assessmentList = listOfChecks.value[assessmentId.value]?.AssessmentItems ?? [];
 for (let i = 0; i < assessmentList.length; i++) {
   const systemName = assessmentList[i].Assessment.System?.name || assessmentList[i].Assessment.System?.nam || "unknown";
 
@@ -552,6 +553,7 @@ function updateComment(newAssessmentList) {
 }
 
 async function editAssessmentApi() {
+  if (!editId.value || !evaluationItem.value) return;
   try {
     const milestoneText = [];
     evaluationItem.value.Milestones.forEach((o) => {

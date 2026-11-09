@@ -7,8 +7,8 @@ import {
   type CreationOptional,
   type ForeignKey,
 } from "sequelize";
-import { Boundary } from "./boundary";
-import { Stig } from "./stig";
+import type { Boundary } from "./boundary";
+import type { Stig } from "./stig";
 
 export class Evaluation extends Model<
   InferAttributes<Evaluation>,
