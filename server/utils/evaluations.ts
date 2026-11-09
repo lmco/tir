@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { Op } from "sequelize";
 import {
   Evaluation,
@@ -117,6 +118,24 @@ export type EvalSummary = {
   StigData: EvalSummaryStigData[];
 };
 
+const BLANK_EVALUATION_ITEM = {
+  Office_Org: "",
+  Resources_Required: "",
+  Scheduled_Completion_Date: "",
+  Milestone_Changes: "",
+  Poam_Comments: "",
+  Mitigations: "",
+  Severity: null,
+  Relevance_of_Threat: null,
+  Likelihood: null,
+  Impact: null,
+  Impact_Description: "",
+  Residual_Risk_Level: null,
+  Recommendations: "",
+};
+
+const EVALUATION_ITEM_BATCH = 200;
+
 export async function createEvaluation(
   boundaryId: number,
   stigId: number,
@@ -127,52 +146,43 @@ export async function createEvaluation(
       StigId: stigId,
     },
   });
+  if (initialCheck) return { error: false, errmsg: "" };
 
-  if (!initialCheck) {
-    const newEvaluation = await Evaluation.create({
-      BoundaryId: boundaryId,
-      StigId: stigId,
-      comment: "TIR",
-      classification: "U",
-      customname: "",
-    });
+  const stigChecks = await StigData.findAll({
+    attributes: ["id"],
+    include: [{ model: Stig, attributes: ["stigid"], where: { id: stigId } }],
+  });
 
-    const stigChecks = await StigData.findAll({
-      include: [
-        {
-          model: Stig,
-          where: { id: stigId },
-        },
-      ],
-    });
-
-    for (const check of stigChecks) {
-      await EvaluationItem.create({
-        EvaluationId: newEvaluation.dataValues.id,
-        StigDatumId: check.dataValues.id,
-        Office_Org: "",
-        Resources_Required: "",
-        Scheduled_Completion_Date: "",
-        Milestone_Changes: "",
-        Poam_Comments: "",
-        Mitigations: "",
-        Severity: null,
-        Relevance_of_Threat: null,
-        Likelihood: null,
-        Impact: null,
-        Impact_Description: "",
-        Residual_Risk_Level: null,
-        Recommendations: "",
-      });
+  await sequelize.transaction(async (transaction) => {
+    const newEvaluation = await Evaluation.create(
+      {
+        BoundaryId: boundaryId,
+        StigId: stigId,
+        comment: "TIR",
+        classification: "U",
+        customname: "",
+      },
+      { transaction },
+    );
+    const now = DateTime.now().toISO();
+    for (let i = 0; i < stigChecks.length; i += EVALUATION_ITEM_BATCH) {
+      const items = stigChecks.slice(i, i + EVALUATION_ITEM_BATCH).map((check) => ({
+        ...BLANK_EVALUATION_ITEM,
+        EvaluationId: newEvaluation.id,
+        StigDatumId: check.id,
+        creationDate: now,
+        lastUpdate: now,
+      }));
+      await EvaluationItem.bulkCreate(items, { transaction });
     }
-    logger.info({
-      service: "Boundary",
-      message: `Creating Evaluation for ${
-        stigChecks[0]?.Stigs?.[0]?.stigid ?? "Unknown"
-      } ID:${stigId} on BoundaryId: ${boundaryId}`,
-    });
-  }
+  });
 
+  logger.info({
+    service: "Boundary",
+    message: `Creating Evaluation for ${
+      stigChecks[0]?.Stigs?.[0]?.stigid ?? "Unknown"
+    } ID:${stigId} on BoundaryId: ${boundaryId}`,
+  });
   return { error: false, errmsg: "" };
 }
 

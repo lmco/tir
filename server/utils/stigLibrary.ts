@@ -32,13 +32,6 @@ type AssessmentMigration = {
   newStig: Stig | null;
 };
 
-function findStigInLibrary(stigid: string, stigLibraryId: number): Promise<Stig | null> {
-  return Stig.findOne({
-    where: { stigid },
-    include: [{ model: StigLibrary, where: { id: stigLibraryId }, required: true }],
-  });
-}
-
 async function* currentAssessments(
   boundaryId: number,
   newStigLibraryId: number,
@@ -66,7 +59,7 @@ async function* currentAssessments(
     });
     for (const assessment of assessments) {
       const oldStig = await Stig.findOne({ where: { id: assessment.StigId } });
-      const newStig = oldStig ? await findStigInLibrary(oldStig.stigid, newStigLibraryId) : null;
+      const newStig = oldStig ? await findStigByStigId(oldStig.stigid, newStigLibraryId) : null;
       yield { system, assessment, oldStig, newStig };
     }
   }
