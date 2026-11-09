@@ -84,6 +84,7 @@ async function migrateAssessment(
   boundaryId: number,
   { system, assessment, oldStig, newStig }: AssessmentMigration,
 ): Promise<void> {
+  if (oldStig && newStig && oldStig.id === newStig.id) return;
   if (oldStig) {
     await system.removeStig(oldStig);
   }
@@ -120,15 +121,15 @@ export const checkBoundary = async (
   newStigLibraryId: number,
 ): Promise<{ results: { stigid: string; version: string }[] }> => {
   try {
-    const reviewStigs: { stigid: string; version: string }[] = [];
+    const reviewStigs = new Map<number, { stigid: string; version: string }>();
     for await (const { oldStig, newStig } of currentAssessments(boundaryId, newStigLibraryId)) {
       if (!oldStig || newStig) continue;
-      reviewStigs.push({
+      reviewStigs.set(oldStig.id, {
         stigid: oldStig.stigid,
         version: `v${oldStig.version}r${oldStig.stigRelease}`,
       });
     }
-    return { results: reviewStigs };
+    return { results: [...reviewStigs.values()] };
   } catch (error) {
     logger.error(error);
     throw createError({
