@@ -154,19 +154,19 @@ export async function createEvaluation(
       await EvaluationItem.create({
         EvaluationId: newEvaluation.dataValues.id,
         StigDatumId: check.dataValues.id,
-        Office_Org: '',
-        Resources_Required: '',
-        Scheduled_Completion_Date:'',
-        Milestone_Changes: '',
-        Poam_Comments: '',
-        Mitigations: '',
+        Office_Org: "",
+        Resources_Required: "",
+        Scheduled_Completion_Date: "",
+        Milestone_Changes: "",
+        Poam_Comments: "",
+        Mitigations: "",
         Severity: null,
         Relevance_of_Threat: null,
         Likelihood: null,
         Impact: null,
-        Impact_Description: '',
+        Impact_Description: "",
         Residual_Risk_Level: null,
-        Recommendations: ''
+        Recommendations: "",
       });
     }
     logger.info({
@@ -255,10 +255,7 @@ export async function getEvaluationSummary(
               {
                 model: Evaluation,
                 attributes: [],
-                where: {
-                  BoundaryId: boundaryId,
-                  StigId: stigId,
-                },
+                where: { BoundaryId: boundaryId, StigId: { [Op.col]: "Stig.id" } },
                 required: true,
               },
             ],

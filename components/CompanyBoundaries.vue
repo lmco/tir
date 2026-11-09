@@ -1625,35 +1625,44 @@ async function userConfirm() {
       body: { BoundaryId: editId.value, StigLibraryId: editData.value.StigLibraryId },
     });
     if (checkResult.results?.length) {
-      loading.value = false;
       warnings.value = checkResult.results;
-      showWarnings.value = true; // show warnings modal
-    } else {
-      await $fetch("/api/boundaries/changeStigLibrary", {
-        method: "POST",
-        body: { BoundaryId: editId.value, StigLibraryId: editData.value.StigLibraryId },
-      });
-      loading.value = false;
-      await editBoundary(editData.value);
+      showWarnings.value = true;
+      return;
     }
+    await changeStigLibrary();
   } catch (err) {
+    showRequestError(err);
+  } finally {
     loading.value = false;
-    addBoundary.value = false;
-    errorObject.value = err;
-    showErrorNotification.value = true;
-    setTimeout(() => (showErrorNotification.value = false), 6000);
   }
 }
 
 async function warningConfirm() {
   showWarnings.value = false;
   loading.value = true;
+  loadingMsg.value = "Changing STIG Library";
+  try {
+    await changeStigLibrary();
+  } catch (err) {
+    showRequestError(err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function changeStigLibrary() {
   await $fetch("/api/boundaries/changeStigLibrary", {
     method: "POST",
     body: { BoundaryId: editId.value, StigLibraryId: editData.value.StigLibraryId },
   });
-  loading.value = false;
   await editBoundary(editData.value);
+}
+
+function showRequestError(err) {
+  addBoundary.value = false;
+  errorObject.value = err;
+  showErrorNotification.value = true;
+  setTimeout(() => (showErrorNotification.value = false), 6000);
 }
 
 async function editBoundary(editData) {
