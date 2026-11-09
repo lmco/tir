@@ -286,9 +286,11 @@ async function saveOverrides() {
   const saveRequest = async (title, request) => {
     try {
       await request();
+      return true;
     } catch (error) {
       failed = true;
       alertsStore.reportError(title, error);
+      return false;
     }
   };
 
@@ -357,7 +359,7 @@ async function saveOverrides() {
           );
         }
         if (overrideClass.value === "stig") {
-          await saveRequest("Failed to remove STIG override lock", () =>
+          const removed = await saveRequest("Failed to remove STIG override lock", () =>
             $fetch("/api/override/removeLock", {
               method: "DELETE",
               body: {
@@ -368,6 +370,7 @@ async function saveOverrides() {
               },
             }),
           );
+          if (removed) lock.id = null;
         }
       }
     }
