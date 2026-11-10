@@ -30,14 +30,42 @@ export default defineEventHandler(async (event) => {
         ],
       });
       if (assessmentItem) {
-        assessmentItem.set({
-          status: body.status,
-          finding_details: body.finding_details,
-          comments: body.comments,
-          severityOverride: body.severityOverride,
-          severityOverrideJustification: body.severityOverrideJustification,
-          lastUpdate: body.lastUpdate,
-        });
+        const validStatuses = ["Open", "NotAFinding", "Not_Applicable", "Not_Reviewed"];
+
+        const validSeverities = ["high", "medium", "low"];
+
+        if (body.status !== undefined && !validStatuses.includes(body.status)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: "Invalid assessment status.",
+          });
+        }
+
+        if (
+          body.severityOverride !== undefined &&
+          body.severityOverride !== null &&
+          !validSeverities.includes(body.severityOverride)
+        ) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: "Invalid severity override.",
+          });
+        }
+
+        const allowedFields = [
+          "status",
+          "finding_details",
+          "comments",
+          "severityOverride",
+          "severityOverrideJustification",
+          "lastUpdate",
+        ] as const;
+
+        for (const key of allowedFields) {
+          if (body[key] !== undefined) {
+            assessmentItem.setDataValue(key, body[key]);
+          }
+        }
 
         assessmentItem.Assessment?.setDataValue("lastUpdate", body.lastUpdate);
 
