@@ -1,21 +1,31 @@
 import { DateTime } from "luxon";
-import { Boundary_User, BoundaryRole, System, UserRole } from "~/db/models";
+import { Boundary_User, BoundaryRole, System } from "~/db/models";
 import { Boundary } from "~/db/models/boundary";
 import { StigOverride } from "~/db/models/stigOverride";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const systemId = body.systemId;
 
-  const rawToken = getCookie(event, "tirtoken");
-  let userId: number;
-
-  userId = 1;
-
-  if (!systemId) {
+  if (!body.systemId) {
     throw createError({
-      statusCode: 399,
-      statusMessage: `SystemId required.`,
+      statusCode: 400,
+      statusMessage: `systemId required.`,
+    });
+  }
+
+  const systemId = body.systemId;
+  const checkResult = await userCheck(event, systemId, undefined, undefined);
+
+  if (!checkResult.BoundaryRoleId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Not a member of the Boundary",
+    });
+  }
+  if (checkResult.BoundaryRoleId === 4) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Reviewers are unable to set override locks",
     });
   }
 
@@ -40,29 +50,36 @@ export default defineEventHandler(async (event) => {
       statusMessage: `Unable to find System`,
     });
   }
-  const boundaryUser = system?.Boundary?.Boundary_User?.find(
-    (boundaryUser) => boundaryUser.id === userId,
-  );
-
-  if (boundaryUser) {
-    console.log("foundUser");
+  if (!body.type || !body.stigDatumId || !body.value) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `type, stigDatumId, and value are all required.`,
+    });
   }
+  const overrideType = body.type;
+  const stigDatumId = body.stigDatumId;
+  const overrideValue = body.value;
+
 
   const [lockResult, newLock] = await StigOverride.findOrCreate({
     where: {
-      type: body.type,
-      StigDatumId: body.stigDatumId,
+      type: overrideType,
+      StigDatumId: stigDatumId,
       SystemId: system?.id,
     },
     defaults: {
-      type: body.type, // typescriddpt doesn't understand type from where would be used
-      value: body.value,
+      type: overrideType, // typescriddpt doesn't understand type from where would be used
+      value: overrideValue,
     },
   });
 
   if (!newLock) {
-    lockResult.value = body.value;
+    lockResult.value = overrideValue;
     lockResult.lastUpdate = DateTime.now().toISO();
+    await lockResult.save();
+  } else {
+    lockResult.lastUpdate = DateTime.now().toISO();
+    lockResult.creationDate = DateTime.now().toISO();
     await lockResult.save();
   }
 
