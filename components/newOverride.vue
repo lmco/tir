@@ -281,7 +281,7 @@ function mapSeverity(severityLevel) {
     Critical: 4,
   };
 
-  return severityMap[severityLevel] ?? null; // Fall back only for null or undefined
+  return severityMap[severityLevel] ?? null;
 }
 
 async function saveOverrides() {
