@@ -8,8 +8,9 @@ test("login page renders", async ({ page }) => {
 
 test("wrong password is rejected", async ({ page }) => {
   const admin = credentials("admin");
-  await submitLogin(page, { ...admin, password: `${admin.password}-wrong` });
-  await expect(page.getByRole("dialog")).toContainText("Login Unsuccessful");
+  const response = await submitLogin(page, { ...admin, password: `${admin.password}-wrong` });
+  expect(response.status()).toBe(200);
+  await expect(page.getByRole("dialog")).toContainText("Invalid User or Password.");
   await expect(page).toHaveURL(/\/$/);
 });
 
