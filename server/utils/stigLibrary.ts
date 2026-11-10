@@ -102,7 +102,14 @@ async function migrateAssessment(
     return;
   }
 
-  const newAssessment = await createBlankAssessment(assessment.SystemId, newStig.id);
+  const newAssessment =
+    (await Assessment.findOne({
+      where: {
+        SystemId: system.id,
+        StigId: newStig.id,
+        succeededByAssessmentId: { [Op.is]: null },
+      },
+    })) ?? (await createBlankAssessment(assessment.SystemId, newStig.id));
   await createEvaluation(boundaryId, newStig.id);
   await copyCheckResults(assessment.id, newAssessment.id);
   assessment.succeededByAssessmentId = newAssessment.id;
