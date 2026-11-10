@@ -77,10 +77,10 @@ export default defineEventHandler(async (event) => {
 
         return { error: false };
       } else {
-        return {
-          error: true,
-          errorMsg: `Assessment Item: ${body.id} not found.`,
-        };
+        throw createError({
+          statusCode: 404,
+          statusMessage: `Assessment Item: ${body.id} not found.`,
+        });
       }
     }
   } else {
