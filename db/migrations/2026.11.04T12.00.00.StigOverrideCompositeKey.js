@@ -6,7 +6,6 @@ const indexName = "StigOverrides_type_StigDatumId_SystemId_unique";
 const duplicateTableName = "StigOverrideCompositeKeyDuplicates";
 
 // Select one winner per identity: same-value rows prefer the highest id;
-// conflicting values prefer the newest lastUpdate, then the highest id.
 const duplicateIds = (table) => `
   SELECT id
   FROM (
@@ -41,12 +40,10 @@ const rowsToArchive = (table) => `
   ${duplicateIds(table)}
 `;
 
-// Shared column order for copying rows between the active and archive tables.
 const overrideColumns = `id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"`;
 
 // SQLite needs a table rebuild to change nullability; this definition keeps both cascade FKs.
 const sqliteOverridesTable = (tableName, keysRequired) => {
-  // Add NOT NULL to both identity columns on up, and omit it on down.
   const required = keysRequired ? " NOT NULL" : "";
   return `
     CREATE TABLE "${tableName}" (
@@ -91,13 +88,9 @@ const sqliteHighWaterMark = async (sequelize, table, transaction) => {
 };
 
 export const up = async ({ context: sequelize }) => {
-  // Match the public-schema convention used by the original StigOverride migration.
   const schemaPrefix = sequelize.getDialect() === "postgres" ? "public." : "";
-  // Fully-qualified active table for raw SQL statements.
   const table = `${schemaPrefix}"StigOverrides"`;
-  // Fully-qualified archive table for raw SQL statements.
   const duplicateTable = `${schemaPrefix}"${duplicateTableName}"`;
-  // Sequelize API for creating tables and indexes.
   const queryInterface = sequelize.getQueryInterface();
   let transaction;
   let sqliteMaxId = 0;
