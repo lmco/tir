@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
           comments: body.comments,
           severityOverride: body.severityOverride,
           severityOverrideJustification: body.severityOverrideJustification,
+          lastUpdate: body.lastUpdate,
         });
 
         assessmentItem.Assessment?.setDataValue("lastUpdate", body.lastUpdate);
