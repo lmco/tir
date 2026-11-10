@@ -46,9 +46,18 @@ export class SessionService {
       include: [{ model: User, include: [UserRole] }],
     });
 
-    if (!session || DateTime.fromISO(session.expiresAt) < DateTime.now()) {
-      this.destroySession(id);
+    if (!session) {
       return null;
+    }
+
+    if (DateTime.fromISO(session.expiresAt) < DateTime.now()) {
+      await this.destroySession(id);
+      
+      throw createError({
+        statusCode: 401,
+        statusMessage: "Unauthorized",
+        data: { code: "SESSION_EXPIRED" },
+      });
     }
 
     return session;
