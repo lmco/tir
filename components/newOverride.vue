@@ -176,11 +176,10 @@ const { open, overrideClass, overrides } = toRefs(props);
 const alertsStore = useAlertsStore();
 
 const localOverrides = ref(overrides.value);
-// Keep unsaved modal edits when refreshing parent data after a partial save failure.
-let preserveLocalOverrides = false;
+let preserveModalEditsDuringParentRefresh = false;
 
 watch(overrides, (newVal) => {
-  if (!preserveLocalOverrides) {
+  if (!preserveModalEditsDuringParentRefresh) {
     localOverrides.value = newVal;
   }
 });
@@ -285,7 +284,6 @@ function mapSeverity(severityLevel) {
   return severityMap[severityLevel] ?? null; // Fall back only for null or undefined
 }
 
-// Saves are non-atomic: successful writes persist on partial failure, and concurrent sessions are last-write-wins per value.
 async function saveOverrides() {
   let failed = false;
   const saveRequest = async (title, request) => {
@@ -392,12 +390,12 @@ async function saveOverrides() {
     }
   }
   if (failed) {
-    preserveLocalOverrides = true;
+    preserveModalEditsDuringParentRefresh = true;
     try {
       await refreshOverrideData();
       await nextTick();
     } finally {
-      preserveLocalOverrides = false;
+      preserveModalEditsDuringParentRefresh = false;
     }
     return false;
   }
@@ -407,7 +405,6 @@ async function saveOverrides() {
   return true;
 }
 
-// Refreshes the parent view after saves without closing the modal on refresh failure.
 async function refreshOverrideData() {
   try {
     await refreshNuxtData(overrideClass.value === "nessus" ? "VulnDataAPI" : "evaluationAPI");
