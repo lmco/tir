@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { Op } from "sequelize";
 import {
   Evaluation,
@@ -22,13 +23,6 @@ export type EvalSummaryOverride = {
   systemId: number;
   systemName: string;
   stigDatumId: number;
-  // System: {
-  //   id: number;
-  //   name: string;
-  // };
-  // StigData: {
-  //   id: number;
-  // };
 };
 
 export type EvalSummaryMilestone = {
@@ -44,12 +38,12 @@ export type EvalSummaryEvaluationItem = {
   Milestone_Changes: string;
   Poam_Comments: string;
   Mitigations: string;
-  Severity: string;
-  Relevance_of_Threat: string;
-  Likelihood: string;
-  Impact: string;
+  Severity: string | null;
+  Relevance_of_Threat: string | null;
+  Likelihood: string | null;
+  Impact: string | null;
   Impact_Description: string;
-  Residual_Risk_Level: string;
+  Residual_Risk_Level: string | null;
   Recommendations: string;
   lastUpdate: string;
   creationDate: string;
@@ -124,6 +118,24 @@ export type EvalSummary = {
   StigData: EvalSummaryStigData[];
 };
 
+const BLANK_EVALUATION_ITEM = {
+  Office_Org: "",
+  Resources_Required: "",
+  Scheduled_Completion_Date: "",
+  Milestone_Changes: "",
+  Poam_Comments: "",
+  Mitigations: "",
+  Severity: null,
+  Relevance_of_Threat: null,
+  Likelihood: null,
+  Impact: null,
+  Impact_Description: "",
+  Residual_Risk_Level: null,
+  Recommendations: "",
+};
+
+const EVALUATION_ITEM_BATCH = 200;
+
 export async function createEvaluation(
   boundaryId: number,
   stigId: number,
@@ -134,41 +146,43 @@ export async function createEvaluation(
       StigId: stigId,
     },
   });
+  if (initialCheck) return { error: false, errmsg: "" };
 
-  if (initialCheck) {
-    console.log("Error.  Evaluation already exists.");
-  } else {
-    console.log("Evaluation not found. Need to make one.");
+  const stigChecks = await StigData.findAll({
+    attributes: ["id"],
+    include: [{ model: Stig, attributes: ["stigid"], where: { id: stigId } }],
+  });
 
-    const newEvaluation = await Evaluation.create({
-      BoundaryId: boundaryId,
-      StigId: stigId,
-      comment: "TIR",
-      classification: "U",
-    });
-
-    const stigChecks = await StigData.findAll({
-      include: [
-        {
-          model: Stig,
-          where: { id: stigId },
-        },
-      ],
-    });
-
-    for (const check of stigChecks) {
-      await EvaluationItem.create({
-        // status: "Not_Reviewed",
-        EvaluationId: newEvaluation.dataValues.id,
-        StigDatumId: check.dataValues.id,
-      });
+  await sequelize.transaction(async (transaction) => {
+    const newEvaluation = await Evaluation.create(
+      {
+        BoundaryId: boundaryId,
+        StigId: stigId,
+        comment: "TIR",
+        classification: "U",
+        customname: "",
+      },
+      { transaction },
+    );
+    const now = DateTime.now().toISO();
+    for (let i = 0; i < stigChecks.length; i += EVALUATION_ITEM_BATCH) {
+      const items = stigChecks.slice(i, i + EVALUATION_ITEM_BATCH).map((check) => ({
+        ...BLANK_EVALUATION_ITEM,
+        EvaluationId: newEvaluation.id,
+        StigDatumId: check.id,
+        creationDate: now,
+        lastUpdate: now,
+      }));
+      await EvaluationItem.bulkCreate(items, { transaction });
     }
-    logger.info({
-      service: "Boundary",
-      message: `Creating Evaluation for ${stigChecks[0].Stigs[0].stigid} ID:${stigId} on BoundaryId: ${boundaryId}`,
-    });
-  }
+  });
 
+  logger.info({
+    service: "Boundary",
+    message: `Creating Evaluation for ${
+      stigChecks[0]?.Stigs?.[0]?.stigid ?? "Unknown"
+    } ID:${stigId} on BoundaryId: ${boundaryId}`,
+  });
   return { error: false, errmsg: "" };
 }
 
@@ -223,6 +237,7 @@ export async function getEvaluationSummary(
                 attributes: ["id"],
                 where: {
                   succeededByAssessmentId: { [Op.is]: null },
+                  StigId: { [Op.col]: "Stig.id" },
                 },
                 required: true,
                 include: [
@@ -247,7 +262,7 @@ export async function getEvaluationSummary(
               {
                 model: Evaluation,
                 attributes: [],
-                where: { BoundaryId: boundaryId },
+                where: { BoundaryId: boundaryId, StigId: { [Op.col]: "Stig.id" } },
                 required: true,
               },
             ],
@@ -354,10 +369,10 @@ export async function getEvaluationSummary(
                 statusOverride: assessmentItem.statusOverride,
                 statusOverrideJustification: assessmentItem.statusOverrideJustification,
                 Assessment: {
-                  id: assessmentItem.Assessment?.id!,
+                  id: assessmentItem.Assessment?.id ?? 0,
                   System: {
-                    id: assessmentItem.Assessment?.System?.id,
-                    name: assessmentItem.Assessment?.System?.name!,
+                    id: assessmentItem.Assessment?.System?.id ?? 0,
+                    name: assessmentItem.Assessment?.System?.name ?? "null",
                   },
                 },
               });
@@ -371,7 +386,7 @@ export async function getEvaluationSummary(
 
               const newFindingCount: SystemFindingCounts = {
                 findings: count,
-                systemName: assessmentItem.Assessment?.System?.name!,
+                systemName: assessmentItem.Assessment?.System?.name ?? "",
               };
 
               systemFindingCounts.push(newFindingCount);
@@ -386,13 +401,6 @@ export async function getEvaluationSummary(
                 systemId: override.System.id,
                 systemName: override.System.name,
                 stigDatumId: override.StigDatumId,
-                // System: {
-                //   id: override.System.id,
-                //   name: override.System.name,
-                // },
-                // StigData: {
-                //   id: override.StigData.id,
-                // },
               };
               overrides.push(newOverride);
 

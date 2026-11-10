@@ -306,7 +306,7 @@ export default defineEventHandler(async (event) => {
     }
 
     if (!uniqueFinding.Stigs[0]?.id) {
-      break;
+      continue;
     }
 
     for (let j = 0; j < uniqueFinding.AssessmentItems.length; j++) {
