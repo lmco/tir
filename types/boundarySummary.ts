@@ -1,6 +1,7 @@
 import type { VulnCounts } from "~/types/nessus";
 import type { FindingCounts } from "~/types/findings";
 import type { ControlFindingCounts } from "~/types/controlFindings";
+import type { SeverityCounts } from "~/types/severity";
 
 type SystemEntry = {
   id: number;
@@ -53,7 +54,7 @@ export type SctmEntry = {
   id: number;
   controlFamilyId: number;
   controlFamilyName: string | null;
-  abbreviation: string,
+  abbreviation: string;
   date: string;
   findings: ControlFindingCounts;
 };
@@ -77,4 +78,6 @@ export type BoundarySumary = {
   vulnTotalCounts: VulnCounts;
   auditCounts: ControlFindingCounts;
   assessorCounts: ControlFindingCounts;
+  uniqueSeverityCounts: SeverityCounts;
+  totalSeverityCounts: SeverityCounts;
 };
