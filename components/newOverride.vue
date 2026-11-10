@@ -363,9 +363,9 @@ async function saveOverrides() {
           if (removed) lock.id = null;
         }
         if (overrideClass.value === "stig") {
-          let removed = false;
-          try {
-            await $fetch("/api/override/removeLock", {
+          let removalResult;
+          const removed = await saveRequest("Failed to remove STIG override lock", async () => {
+            removalResult = await $fetch("/api/override/removeLock", {
               method: "DELETE",
               body: {
                 systemId: system.systemId,
@@ -373,18 +373,16 @@ async function saveOverrides() {
                 stigDatumId: system.overrides.id,
               },
             });
-            removed = true;
-          } catch (error) {
-            const statusCode = error?.statusCode ?? error?.status;
-            const errorCode = error?.data?.data?.code;
-            if (statusCode === 404 && errorCode === "STIG_OVERRIDE_ALREADY_UNLOCKED") {
-              removed = true;
-            } else {
-              failed = true;
-              alertsStore.reportError("Failed to remove STIG override lock", error);
+          });
+          if (removed) {
+            lock.id = null;
+            if (removalResult.removed === 0) {
+              alertsStore.reportError(
+                "STIG override lock was already absent",
+                new Error("No matching lock row needed to be removed."),
+              );
             }
           }
-          if (removed) lock.id = null;
         }
       }
     }
