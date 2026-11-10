@@ -452,13 +452,13 @@ export default defineEventHandler(async (event) => {
                           const [myOverride, created] = await StigOverride.findOrCreate({
                             where: {
                               type: so.type,
-                              SystemId: systemLookupValue.value,
+                              SystemId: -1 ? assessment.SystemId : systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
                             defaults: {
                               type: so.type, // typescript doesn't understand type from where would be used
                               value: so.value,
-                              SystemId: systemLookupValue.value,
+                              SystemId: -1 ? assessment.SystemId : systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
                           });
