@@ -10,6 +10,8 @@ import { Cve } from "~/db/models/cve";
 import { NessusOverride } from "~/db/models/nessusOverride";
 
 export default defineEventHandler(async (event) => {
+  setResponseHeader(event, "Deprecation", "true");
+
   const query = getQuery(event);
 
   if (!query.BoundaryId) {
@@ -28,6 +30,15 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const successorQuery = new URLSearchParams();
+  for (const key of ["selectedHeaders", "factorOverrides"] as const) {
+    if (query[key]) successorQuery.set(key, query[key].toString());
+  }
+  const successorPath = `/api/boundaries/${BoundaryId}/exports/nessus`;
+  const successorSearch = successorQuery.toString();
+  const successorUrl = successorSearch ? `${successorPath}?${successorSearch}` : successorPath;
+  setResponseHeader(event, "Link", `<${successorUrl}>; rel="successor-version"`);
+
   const checkResult = await userCheck(event, undefined, query.BoundaryId?.toString(), undefined);
 
   if (!checkResult.BoundaryRoleId) {
@@ -36,6 +47,11 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Insufficient Permissions.",
     });
   }
+
+  logger.warning({
+    service: "API",
+    message: `Deprecated endpoint /api/boundaries/nessus used by ${checkResult.user.email} for boundary ${BoundaryId}`,
+  });
   if (!query.selectedHeaders) {
     throw createError({
       statusCode: 400,

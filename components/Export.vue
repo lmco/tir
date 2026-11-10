@@ -541,25 +541,28 @@ const nessusDownload = async () => {
   ] as const;
 
   const queryParams = new URLSearchParams();
-  queryParams.append("BoundaryId", boundaryId);
   queryParams.append("selectedHeaders", selectedHeaders);
-  await fetch(`/api/boundaries/nessus?${queryParams}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  })
-    .then((response) => response.blob())
-    .then((blob) => {
-      const url = window.URL.createObjectURL(new Blob([blob]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `${boundaryName}_NessusExport.csv`);
 
-      document.body.appendChild(link);
+  const url = `/api/boundaries/${encodeURIComponent(boundaryId)}/exports/nessus?${queryParams}`;
 
-      link.click();
+  const response = await fetch(url);
 
-      document.body.removeChild(link);
-    });
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+
+  const downloadUrl = window.URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = `${boundaryName}_NessusExport.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(downloadUrl);
 };
 
 const ppsmDownload = async () => {
