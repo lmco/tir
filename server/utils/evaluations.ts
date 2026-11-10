@@ -237,6 +237,7 @@ export async function getEvaluationSummary(
                 attributes: ["id"],
                 where: {
                   succeededByAssessmentId: { [Op.is]: null },
+                  StigId: { [Op.col]: "Stig.id" },
                 },
                 required: true,
                 include: [

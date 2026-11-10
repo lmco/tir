@@ -65,6 +65,13 @@ async function* currentAssessments(
   }
 }
 
+const isUntouched = (check: AssessmentItem) =>
+  check.status === "Not_Reviewed" &&
+  !check.comments &&
+  !check.finding_details &&
+  !check.statusOverride &&
+  !check.severityOverride;
+
 async function copyCheckResults(oldAssessmentId: number, newAssessmentId: number): Promise<void> {
   const include = [{ model: StigData, attributes: ["vuln_num", "rule_id"] }];
   const oldChecks = await AssessmentItem.findAll({
@@ -78,7 +85,7 @@ async function copyCheckResults(oldAssessmentId: number, newAssessmentId: number
 
   for (const check of newChecks) {
     const matchingCheck = findMatch(check, oldChecks);
-    if (!matchingCheck) continue;
+    if (!matchingCheck || !isUntouched(check)) continue;
     check.status = matchingCheck.status;
     check.comments = matchingCheck.comments;
     check.finding_details = matchingCheck.finding_details;
@@ -96,8 +103,8 @@ async function migrateAssessment(
   if (oldStig && newStig && oldStig.id === newStig.id) return;
   if (!newStig) {
     if (oldStig) {
-      await system.removeStig(oldStig);
       await Assessment.destroy({ where: { SystemId: system.id, StigId: oldStig.id } });
+      await system.removeStig(oldStig);
     }
     return;
   }
