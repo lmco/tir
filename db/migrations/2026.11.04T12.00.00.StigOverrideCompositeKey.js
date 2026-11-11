@@ -13,6 +13,14 @@ const hasIndex = async (queryInterface, tableName, indexName, transaction) => {
   return indexes.some((index) => index.name === indexName);
 };
 
+const areForeignKeysNotNull = async (queryInterface, tableName, transaction) => {
+  const description = await queryInterface.describeTable(tableName, { transaction });
+  return (
+    description.SystemId?.allowNull === false &&
+    description.StigDatumId?.allowNull === false
+  );
+};
+
 const duplicateIds = (table) => `
   SELECT id
   FROM (
@@ -93,175 +101,247 @@ const sqliteHighWaterMark = async (sequelize, table, transaction) => {
 };
 
 export const up = async ({ context: sequelize }) => {
-  const schemaPrefix = sequelize.getDialect() === "postgres" ? "public." : "";
+  const dialect = sequelize.getDialect();
+  const schemaPrefix = dialect === "postgres" ? "public." : "";
   const table = `${schemaPrefix}"StigOverrides"`;
   const duplicateTable = `${schemaPrefix}"${duplicateTableName}"`;
   const queryInterface = sequelize.getQueryInterface();
-  const transaction = await sequelize.transaction();
-  let sqliteMaxId = 0;
 
-  try {
-    const archiveExists = await hasTable(queryInterface, duplicateTableName, transaction);
-    const indexExists = await hasIndex(queryInterface, "StigOverrides", indexName, transaction);
-    if (archiveExists && indexExists) {
-      await transaction.commit();
-      return;
-    }
-    if (archiveExists || indexExists) {
-      throw new Error("STIG override migration is in an unexpected partial state.");
-    }
+  const archiveExists = await hasTable(queryInterface, duplicateTableName);
+  const keysNotNull = await areForeignKeysNotNull(queryInterface, "StigOverrides");
+  const indexExists = await hasIndex(queryInterface, "StigOverrides", indexName);
 
-    if (sequelize.getDialect() === "sqlite") {
-      sqliteMaxId = await sqliteHighWaterMark(sequelize, table, transaction);
-    }
+  if (archiveExists && keysNotNull && indexExists) {
+    return;
+  }
+  if ((!archiveExists && (keysNotNull || indexExists)) || (!keysNotNull && indexExists)) {
+    throw new Error("STIG override migration is in an unexpected partial state.");
+  }
 
-    await queryInterface.createTable(
-      duplicateTableName,
-      {
-        id: { type: DataTypes.INTEGER, primaryKey: true, allowNull: false },
-        type: { type: DataTypes.TEXT, allowNull: false },
-        value: { type: DataTypes.TEXT, allowNull: false },
-        lastUpdate: { type: DataTypes.TEXT, allowNull: false },
-        creationDate: { type: DataTypes.TEXT, allowNull: false },
-        SystemId: {
-          type: DataTypes.INTEGER,
-          allowNull: true,
-          references: { model: "Systems", key: "id" },
-          onUpdate: "CASCADE",
-          onDelete: "CASCADE",
+  // Step 1: Commit the archive and delete operations in their own transaction.
+  if (!archiveExists) {
+    const archiveTransaction = await sequelize.transaction();
+    try {
+      await queryInterface.createTable(
+        duplicateTableName,
+        {
+          id: { type: DataTypes.INTEGER, primaryKey: true, allowNull: false },
+          type: { type: DataTypes.TEXT, allowNull: false },
+          value: { type: DataTypes.TEXT, allowNull: false },
+          lastUpdate: { type: DataTypes.TEXT, allowNull: false },
+          creationDate: { type: DataTypes.TEXT, allowNull: false },
+          SystemId: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: "Systems", key: "id" },
+            onUpdate: "CASCADE",
+            onDelete: "CASCADE",
+          },
+          StigDatumId: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: "StigData", key: "id" },
+            onUpdate: "CASCADE",
+            onDelete: "CASCADE",
+          },
         },
-        StigDatumId: {
-          type: DataTypes.INTEGER,
-          allowNull: true,
-          references: { model: "StigData", key: "id" },
-          onUpdate: "CASCADE",
-          onDelete: "CASCADE",
-        },
-      },
-      { transaction },
-    );
+        { transaction: archiveTransaction },
+      );
 
-    await sequelize.query(
-      `
-      INSERT INTO ${duplicateTable} (
-        id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"
-      )
-      SELECT id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"
-      FROM ${table}
-      WHERE id IN (${rowsToArchive(table)})
-    `,
-      { transaction },
-    );
-
-    await sequelize.query(
-      `
-      DELETE FROM ${table}
-      WHERE id IN (SELECT id FROM ${duplicateTable})
-    `,
-      { transaction },
-    );
-
-    if (sequelize.getDialect() === "postgres") {
       await sequelize.query(
         `
-        ALTER TABLE ${table}
-          ALTER COLUMN "SystemId" SET NOT NULL,
-          ALTER COLUMN "StigDatumId" SET NOT NULL
+        INSERT INTO ${duplicateTable} (
+          id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"
+        )
+        SELECT id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"
+        FROM ${table}
+        WHERE id IN (${rowsToArchive(table)})
       `,
-        { transaction },
+        { transaction: archiveTransaction },
       );
-    }
-    if (sequelize.getDialect() === "sqlite") {
-      await sequelize.query(sqliteOverridesTable("StigOverrides_rebuild", true), { transaction });
+
       await sequelize.query(
         `
-        INSERT INTO "StigOverrides_rebuild" (${overrideColumns})
-        SELECT ${overrideColumns} FROM "StigOverrides"
+        DELETE FROM ${table}
+        WHERE id IN (SELECT id FROM ${duplicateTable})
       `,
-        { transaction },
+        { transaction: archiveTransaction },
       );
-      await queryInterface.dropTable("StigOverrides", { transaction });
-      await queryInterface.renameTable("StigOverrides_rebuild", "StigOverrides", { transaction });
-      await preserveSqliteSequence(sequelize, sqliteMaxId, transaction);
-    }
 
-    await queryInterface.addIndex("StigOverrides", ["type", "StigDatumId", "SystemId"], {
-      name: indexName,
-      unique: true,
-      transaction,
-    });
-    await transaction.commit();
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
+      await archiveTransaction.commit();
+    } catch (error) {
+      await archiveTransaction.rollback();
+      throw error;
+    }
+  }
+
+  // Step 2: Commit NOT NULL schema changes (or SQLite table rebuild) in a separate transaction
+  // so PostgreSQL releases the ACCESS EXCLUSIVE table lock before the index build.
+  if (!keysNotNull) {
+    const schemaTransaction = await sequelize.transaction();
+    try {
+      if (dialect === "postgres") {
+        await sequelize.query(
+          `
+          ALTER TABLE ${table}
+            ALTER COLUMN "SystemId" SET NOT NULL,
+            ALTER COLUMN "StigDatumId" SET NOT NULL
+        `,
+          { transaction: schemaTransaction },
+        );
+      }
+      if (dialect === "sqlite") {
+        const activeMaxId = await sqliteHighWaterMark(sequelize, table, schemaTransaction);
+        const archiveMaxId = await sqliteHighWaterMark(
+          sequelize,
+          duplicateTable,
+          schemaTransaction,
+        );
+        const sqliteMaxId = Math.max(activeMaxId, archiveMaxId);
+
+        await sequelize.query(sqliteOverridesTable("StigOverrides_rebuild", true), {
+          transaction: schemaTransaction,
+        });
+        await sequelize.query(
+          `
+          INSERT INTO "StigOverrides_rebuild" (${overrideColumns})
+          SELECT ${overrideColumns} FROM "StigOverrides"
+        `,
+          { transaction: schemaTransaction },
+        );
+        await queryInterface.dropTable("StigOverrides", { transaction: schemaTransaction });
+        await queryInterface.renameTable("StigOverrides_rebuild", "StigOverrides", {
+          transaction: schemaTransaction,
+        });
+        await preserveSqliteSequence(sequelize, sqliteMaxId, schemaTransaction);
+      }
+
+      await schemaTransaction.commit();
+    } catch (error) {
+      await schemaTransaction.rollback();
+      throw error;
+    }
+  }
+
+  // Step 3: Build the unique index in its own dedicated transaction.
+  if (!indexExists) {
+    const indexTransaction = await sequelize.transaction();
+    try {
+      await queryInterface.addIndex("StigOverrides", ["type", "StigDatumId", "SystemId"], {
+        name: indexName,
+        unique: true,
+        transaction: indexTransaction,
+      });
+      await indexTransaction.commit();
+    } catch (error) {
+      await indexTransaction.rollback();
+      throw error;
+    }
   }
 };
 
 export const down = async ({ context: sequelize }) => {
-  const schemaPrefix = sequelize.getDialect() === "postgres" ? "public." : "";
+  const dialect = sequelize.getDialect();
+  const schemaPrefix = dialect === "postgres" ? "public." : "";
   const table = `${schemaPrefix}"StigOverrides"`;
   const duplicateTable = `${schemaPrefix}"${duplicateTableName}"`;
   const queryInterface = sequelize.getQueryInterface();
-  const transaction = await sequelize.transaction();
 
-  try {
-    const archiveExists = await hasTable(queryInterface, duplicateTableName, transaction);
-    const indexExists = await hasIndex(queryInterface, "StigOverrides", indexName, transaction);
-    if (!archiveExists && !indexExists) {
-      await transaction.commit();
-      return;
-    }
-    if (!archiveExists || !indexExists) {
-      throw new Error("STIG override rollback is in an unexpected partial state.");
-    }
+  const archiveExists = await hasTable(queryInterface, duplicateTableName);
+  const keysNotNull = await areForeignKeysNotNull(queryInterface, "StigOverrides");
+  const indexExists = await hasIndex(queryInterface, "StigOverrides", indexName);
 
-    let sqliteMaxId = 0;
-    if (sequelize.getDialect() === "sqlite") {
-      sqliteMaxId = await sqliteHighWaterMark(sequelize, table, transaction);
+  if (!archiveExists && !keysNotNull && !indexExists) {
+    return;
+  }
+  if ((!archiveExists && (keysNotNull || indexExists)) || (!keysNotNull && indexExists)) {
+    throw new Error("STIG override rollback is in an unexpected partial state.");
+  }
+
+  // Step 1: Drop the unique index in its own transaction.
+  if (indexExists) {
+    const indexTransaction = await sequelize.transaction();
+    try {
+      await queryInterface.removeIndex("StigOverrides", indexName, {
+        transaction: indexTransaction,
+      });
+      await indexTransaction.commit();
+    } catch (error) {
+      await indexTransaction.rollback();
+      throw error;
     }
-    await queryInterface.removeIndex("StigOverrides", indexName, { transaction });
-    if (sequelize.getDialect() === "postgres") {
-      await sequelize.query(
-        `
-        ALTER TABLE ${table}
-          ALTER COLUMN "StigDatumId" DROP NOT NULL,
-          ALTER COLUMN "SystemId" DROP NOT NULL
-      `,
-        { transaction },
-      );
+  }
+
+  // Step 2: Relax NOT NULL constraints in a separate transaction.
+  if (keysNotNull) {
+    const schemaTransaction = await sequelize.transaction();
+    try {
+      if (dialect === "postgres") {
+        await sequelize.query(
+          `
+          ALTER TABLE ${table}
+            ALTER COLUMN "StigDatumId" DROP NOT NULL,
+            ALTER COLUMN "SystemId" DROP NOT NULL
+        `,
+          { transaction: schemaTransaction },
+        );
+      }
+
+      if (dialect === "sqlite") {
+        const activeMaxId = await sqliteHighWaterMark(sequelize, table, schemaTransaction);
+        const archiveMaxId = await sqliteHighWaterMark(
+          sequelize,
+          duplicateTable,
+          schemaTransaction,
+        );
+        const sqliteMaxId = Math.max(activeMaxId, archiveMaxId);
+
+        await sequelize.query(sqliteOverridesTable("StigOverrides_rebuild", false), {
+          transaction: schemaTransaction,
+        });
+        await sequelize.query(
+          `
+          INSERT INTO "StigOverrides_rebuild" (${overrideColumns})
+          SELECT ${overrideColumns} FROM "StigOverrides"
+        `,
+          { transaction: schemaTransaction },
+        );
+        await queryInterface.dropTable("StigOverrides", { transaction: schemaTransaction });
+        await queryInterface.renameTable("StigOverrides_rebuild", "StigOverrides", {
+          transaction: schemaTransaction,
+        });
+        await preserveSqliteSequence(sequelize, sqliteMaxId, schemaTransaction);
+      }
+
+      await schemaTransaction.commit();
+    } catch (error) {
+      await schemaTransaction.rollback();
+      throw error;
+    }
+  }
+
+  // Step 3: Restore archived duplicates and drop the archive table in a final transaction.
+  if (archiveExists) {
+    const restoreTransaction = await sequelize.transaction();
+    try {
       await sequelize.query(
         `
         INSERT INTO ${table} (${overrideColumns})
         SELECT ${overrideColumns} FROM ${duplicateTable}
       `,
-        { transaction },
+        { transaction: restoreTransaction },
       );
-      await queryInterface.dropTable(duplicateTableName, { transaction });
+
+      if (dialect === "sqlite") {
+        const sqliteMaxId = await sqliteHighWaterMark(sequelize, table, restoreTransaction);
+        await preserveSqliteSequence(sequelize, sqliteMaxId, restoreTransaction);
+      }
+
+      await queryInterface.dropTable(duplicateTableName, { transaction: restoreTransaction });
+      await restoreTransaction.commit();
+    } catch (error) {
+      await restoreTransaction.rollback();
+      throw error;
     }
-    if (sequelize.getDialect() === "sqlite") {
-      await sequelize.query(sqliteOverridesTable("StigOverrides_rebuild", false), { transaction });
-      await sequelize.query(
-        `
-        INSERT INTO "StigOverrides_rebuild" (${overrideColumns})
-        SELECT ${overrideColumns} FROM "StigOverrides"
-      `,
-        { transaction },
-      );
-      await sequelize.query(
-        `
-        INSERT INTO "StigOverrides_rebuild" (${overrideColumns})
-        SELECT ${overrideColumns} FROM "${duplicateTableName}"
-      `,
-        { transaction },
-      );
-      await queryInterface.dropTable("StigOverrides", { transaction });
-      await queryInterface.renameTable("StigOverrides_rebuild", "StigOverrides", { transaction });
-      await queryInterface.dropTable(duplicateTableName, { transaction });
-      await preserveSqliteSequence(sequelize, sqliteMaxId, transaction);
-    }
-    await transaction.commit();
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
   }
 };
