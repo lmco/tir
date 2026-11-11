@@ -5,88 +5,89 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event);
   const checkResult = await userCheck(event, undefined, body.BoundaryId, undefined);
   body.lastUpdate = DateTime.now().toISO();
-  if (checkResult.UserRoleId === 2 && checkResult.BoundaryRoleId) {
-    if (checkResult.BoundaryRoleId === 4) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: "Reviewers are unable to Edit Assessments",
-      });
-    } else {
-      const assessmentItem = await AssessmentItem.findOne({
-        where: { id: body.id },
-        include: [
-          {
-            model: Assessment,
-            where: { succeededByAssessmentId: null },
-            required: true,
-            include: [
-              {
-                model: System,
-                where: { BoundaryId: body.BoundaryId },
-                required: true,
-              },
-            ],
-          },
-        ],
-      });
-      if (assessmentItem) {
-        const validStatuses = ["Open", "NotAFinding", "Not_Applicable", "Not_Reviewed"];
 
-        const validSeverities = ["high", "medium", "low"];
-
-        if (body.status !== undefined && !validStatuses.includes(body.status)) {
-          throw createError({
-            statusCode: 400,
-            statusMessage: "Invalid assessment status.",
-          });
-        }
-
-        if (
-          body.severityOverride !== undefined &&
-          body.severityOverride !== null &&
-          !validSeverities.includes(body.severityOverride)
-        ) {
-          throw createError({
-            statusCode: 400,
-            statusMessage: "Invalid severity override.",
-          });
-        }
-
-        const allowedFields = [
-          "status",
-          "finding_details",
-          "comments",
-          "severityOverride",
-          "severityOverrideJustification",
-          "lastUpdate",
-        ] as const;
-
-        for (const key of allowedFields) {
-          if (body[key] !== undefined) {
-            assessmentItem.setDataValue(key, body[key]);
-          }
-        }
-
-        assessmentItem.Assessment?.setDataValue("lastUpdate", body.lastUpdate);
-
-        await assessmentItem.save();
-
-        if (assessmentItem.Assessment) {
-          await assessmentItem.Assessment.save();
-        }
-
-        return { error: false };
-      } else {
-        throw createError({
-          statusCode: 404,
-          statusMessage: `Assessment Item: ${body.id} not found.`,
-        });
-      }
-    }
-  } else {
+  if (checkResult.UserRoleId !== 2 || !checkResult.BoundaryRoleId) {
     throw createError({
       statusCode: 401,
       statusMessage: "Not a Member of this Boundary",
     });
   }
+
+  if (checkResult.BoundaryRoleId === 4) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Reviewers are unable to Edit Assessments",
+    });
+  }
+
+  const assessmentItem = await AssessmentItem.findOne({
+    where: { id: body.id },
+    include: [
+      {
+        model: Assessment,
+        where: { succeededByAssessmentId: null },
+        required: true,
+        include: [
+          {
+            model: System,
+            where: { BoundaryId: body.BoundaryId },
+            required: true,
+          },
+        ],
+      },
+    ],
+  });
+
+  if (!assessmentItem) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: `Assessment Item: ${body.id} not found.`,
+    });
+  }
+
+  const validStatuses = ["Open", "NotAFinding", "Not_Applicable", "Not_Reviewed"];
+  const validSeverities = ["high", "medium", "low"];
+
+  if (body.status !== undefined && !validStatuses.includes(body.status)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid assessment status.",
+    });
+  }
+
+  if (
+    body.severityOverride !== undefined &&
+    body.severityOverride !== null &&
+    !validSeverities.includes(body.severityOverride)
+  ) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid severity override.",
+    });
+  }
+
+  const allowedFields = [
+    "status",
+    "finding_details",
+    "comments",
+    "severityOverride",
+    "severityOverrideJustification",
+    "lastUpdate",
+  ] as const;
+
+  for (const key of allowedFields) {
+    if (body[key] !== undefined) {
+      assessmentItem.setDataValue(key, body[key]);
+    }
+  }
+
+  assessmentItem.Assessment?.setDataValue("lastUpdate", body.lastUpdate);
+
+  await assessmentItem.save();
+
+  if (assessmentItem.Assessment) {
+    await assessmentItem.Assessment.save();
+  }
+
+  return { error: false };
 });
