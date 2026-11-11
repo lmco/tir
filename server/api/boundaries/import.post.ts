@@ -414,9 +414,15 @@ export default defineEventHandler(async (event) => {
                 if (assessment.SystemId in SystemLookupTable) {
                   systemLookupValue = SystemLookupTable[assessment.SystemId];
                 }
+                if (systemLookupValue == -1) {
+                  throw createError({
+                    statusCode: 400,
+                    statusMessage: `Boundary import failed: assessment system ${assessment.SystemId} was not imported.`,
+                  });
+                }
 
                 const newAssessment = await createBlankAssessment(
-                  systemLookupValue == -1 ? assessment.SystemId : systemLookupValue.value,
+                  systemLookupValue.value,
                   stigLookupValue == -1 ? assessment.StigId : stigLookupValue.value,
                 );
                 newAssessment.succeededByAssessmentId = assessment.succeededByAssessmentId;
@@ -452,13 +458,13 @@ export default defineEventHandler(async (event) => {
                           const [myOverride, created] = await StigOverride.findOrCreate({
                             where: {
                               type: so.type,
-                              SystemId: systemLookupValue == -1 ? assessment.SystemId : systemLookupValue.value,
+                              SystemId: systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
                             defaults: {
                               type: so.type, // typescript doesn't understand type from where would be used
                               value: so.value,
-                              SystemId: systemLookupValue == -1 ? assessment.SystemId : systemLookupValue.value,
+                              SystemId: systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
                           });
