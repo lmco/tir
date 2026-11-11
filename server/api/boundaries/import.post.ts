@@ -270,7 +270,6 @@ export default defineEventHandler(async (event) => {
         }
         // end for assessments loop
 
-        // verify boundary systems contains assessment system ID
         const importedSystemIds = new Set(boundary.Boundary.Systems.map((system) => system.id));
         const assessmentWithMissingSystem = boundary.Assessments.find(
           (assessment) => !importedSystemIds.has(assessment.SystemId),
@@ -425,7 +424,7 @@ export default defineEventHandler(async (event) => {
                 }
 
                 let systemLookupValue = -1;
-                // Defensive guard for missing lookup entry
+                
                 if (assessment.SystemId in SystemLookupTable) {
                   systemLookupValue = SystemLookupTable[assessment.SystemId];
                 }
@@ -481,6 +480,8 @@ export default defineEventHandler(async (event) => {
                             defaults: {
                               type: so.type, // typescript doesn't understand type from where would be used
                               value: so.value,
+                              creationDate: DateTime.now().toISO(),
+                              lastUpdate: DateTime.now().toISO(),
                               SystemId: systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },

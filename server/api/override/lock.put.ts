@@ -70,16 +70,14 @@ export default defineEventHandler(async (event) => {
     defaults: {
       type: overrideType, // typescriddpt doesn't understand type from where would be used
       value: overrideValue,
+      creationDate: DateTime.now().toISO(),
+      lastUpdate: DateTime.now().toISO(),
     },
   });
 
   if (!newLock) {
     lockResult.value = overrideValue;
     lockResult.lastUpdate = DateTime.now().toISO();
-    await lockResult.save();
-  } else {
-    lockResult.lastUpdate = DateTime.now().toISO();
-    lockResult.creationDate = DateTime.now().toISO();
     await lockResult.save();
   }
 

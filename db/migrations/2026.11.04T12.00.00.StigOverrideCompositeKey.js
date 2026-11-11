@@ -35,7 +35,6 @@ const duplicateIds = (table) => `
   WHERE duplicate_rank > 1
 `;
 
-// Rows without both foreign keys cannot satisfy the new required identity.
 const rowsToArchive = (table) => `
   SELECT id
   FROM ${table}
@@ -46,7 +45,6 @@ const rowsToArchive = (table) => `
 
 const overrideColumns = `id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"`;
 
-// SQLite needs a table rebuild to change nullability; this definition keeps both cascade FKs.
 const sqliteOverridesTable = (tableName, keysRequired) => {
   const required = keysRequired ? " NOT NULL" : "";
   return `
@@ -62,7 +60,6 @@ const sqliteOverridesTable = (tableName, keysRequired) => {
   `;
 };
 
-// SQLite rebuilds reset AUTOINCREMENT, so retain its previous high-water mark.
 const preserveSqliteSequence = async (sequelize, maxId, transaction) => {
   await sequelize.query(
     `
@@ -84,9 +81,7 @@ const preserveSqliteSequence = async (sequelize, maxId, transaction) => {
   );
 };
 
-// Read the greater of the stored sequence and current maximum ID before rebuilding.
 const sqliteHighWaterMark = async (sequelize, table, transaction) => {
-  // Query both values so deleted IDs are not reused after the rebuild.
   const [rows] = await sequelize.query(
     `
     SELECT MAX(
@@ -174,7 +169,6 @@ export const up = async ({ context: sequelize }) => {
     }
   }
 
-  // so PostgreSQL releases the ACCESS EXCLUSIVE table lock before the index build.
   if (!keysNotNull) {
     const schemaTransaction = await sequelize.transaction();
     try {
