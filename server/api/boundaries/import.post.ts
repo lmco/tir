@@ -270,7 +270,7 @@ export default defineEventHandler(async (event) => {
         }
         // end for assessments loop
 
-        // Verify all assessment systems are present before creating imported records
+        // verify boundary systems contains assessment system ID
         const importedSystemIds = new Set(boundary.Boundary.Systems.map((system) => system.id));
         const assessmentWithMissingSystem = boundary.Assessments.find(
           (assessment) => !importedSystemIds.has(assessment.SystemId),
@@ -425,6 +425,7 @@ export default defineEventHandler(async (event) => {
                 }
 
                 let systemLookupValue = -1;
+                // Defensive guard for missing lookup entry
                 if (assessment.SystemId in SystemLookupTable) {
                   systemLookupValue = SystemLookupTable[assessment.SystemId];
                 }

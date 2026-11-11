@@ -118,7 +118,6 @@ export const up = async ({ context: sequelize }) => {
     throw new Error("STIG override migration is in an unexpected partial state.");
   }
 
-  // Step 1: Commit the archive and delete operations in their own transaction.
   if (!archiveExists) {
     const archiveTransaction = await sequelize.transaction();
     try {
@@ -175,7 +174,6 @@ export const up = async ({ context: sequelize }) => {
     }
   }
 
-  // Step 2: Commit NOT NULL schema changes (or SQLite table rebuild) in a separate transaction
   // so PostgreSQL releases the ACCESS EXCLUSIVE table lock before the index build.
   if (!keysNotNull) {
     const schemaTransaction = await sequelize.transaction();
@@ -223,7 +221,6 @@ export const up = async ({ context: sequelize }) => {
     }
   }
 
-  // Step 3: Build the unique index in its own dedicated transaction.
   if (!indexExists) {
     const indexTransaction = await sequelize.transaction();
     try {
@@ -258,7 +255,6 @@ export const down = async ({ context: sequelize }) => {
     throw new Error("STIG override rollback is in an unexpected partial state.");
   }
 
-  // Step 1: Drop the unique index in its own transaction.
   if (indexExists) {
     const indexTransaction = await sequelize.transaction();
     try {
@@ -272,7 +268,6 @@ export const down = async ({ context: sequelize }) => {
     }
   }
 
-  // Step 2: Relax NOT NULL constraints in a separate transaction.
   if (keysNotNull) {
     const schemaTransaction = await sequelize.transaction();
     try {
@@ -320,7 +315,6 @@ export const down = async ({ context: sequelize }) => {
     }
   }
 
-  // Step 3: Restore archived duplicates and drop the archive table in a final transaction.
   if (archiveExists) {
     const restoreTransaction = await sequelize.transaction();
     try {
