@@ -454,6 +454,8 @@ export default defineEventHandler(async (event) => {
                         ai.StigDatum.StigOverrides.length > 0
                       ) {
                         for (const so of ai.StigDatum.StigOverrides) {
+                          if (so.SystemId !== assessment.SystemId) continue;
+
                           let myMappedStigDatum = DatumLookupTable[so.StigDatumId].value;
                           const [myOverride, created] = await StigOverride.findOrCreate({
                             where: {
