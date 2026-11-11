@@ -52,9 +52,26 @@ jobs:
             echo "::warning::could not read the pull request comments, reviewing without them"
             echo '[]' > "$RUNNER_TEMP/review/comments.json"
           fi
-          jq -s --argjson max 8000 '
+          jq -rs '
               [ .[][]
                 | select(.user.type == "User" and (.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")))
+                | .user.login ]
+              | unique[]' "$RUNNER_TEMP/review/comments.json" > "$RUNNER_TEMP/review/candidates.txt"
+          : > "$RUNNER_TEMP/review/writers.txt"
+          while read -r login; do
+            if ! permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq .permission < /dev/null); then
+              echo "::warning::could not check the repository permission of $login, leaving their comments out"
+              continue
+            fi
+            case $permission in
+              admin|write) echo "$login" >> "$RUNNER_TEMP/review/writers.txt" ;;
+              *) echo "leaving out comments from $login, who has no write access" ;;
+            esac
+          done < "$RUNNER_TEMP/review/candidates.txt"
+          jq -s --argjson max 8000 --rawfile writers "$RUNNER_TEMP/review/writers.txt" '
+              ($writers | split("\n")) as $allowed
+              | [ .[][]
+                | select(.user.type == "User" and (.user.login | IN($allowed[])))
                 | "### \(.user.login) on \(.created_at)\n\n\(.body)\n" ]
               | reverse
               | reduce .[] as $c ({size: 0, kept: [], dropped: 0};
@@ -137,8 +154,8 @@ jobs:
             path/to/file.ts - a short phrase naming the finding (login of the
             commenter, without an @). For a deferred finding add the issue or
             pull request the comment names. Leave the section out when there is
-            nothing to list. When every finding was left out this way, write
-            "No findings." where the findings would go and keep the section.
+            nothing to list. When every finding was left out this way, go straight
+            from the summary sentence to this section.
 
           You may read and search any file in the checkout to understand context
           around the diff. You have no shell and cannot modify anything.
@@ -153,8 +170,8 @@ jobs:
           3. A final line "PR description: ok" or a should-fix bullet about the Testing
              or breaking-change sections.
 
-          If there are no findings, write the one sentence summary and then
-          "No findings." Do not pad.
+          If there are no findings and you left none out per maintainer comments,
+          write the one sentence summary and then "No findings." Do not pad.
           PROMPT
 
           cd "$R"
@@ -192,6 +209,11 @@ jobs:
             printf '%s\n' "$MARKER"
             printf '## AI review\n\n'
             cat "$R/review.md"
+            jq -r '
+                (.kept | map("- " + (split("\n")[0] | ltrimstr("### "))))
+                + (if .dropped > 0 then ["- \(.dropped) not read, over the 8000 character cap"] else [] end)
+                | select(length > 0)
+                | "\n\nMaintainer comments read:", .[]' "$R/selected.json"
             printf '\n\n<sub>Reviewed %s with Claude. Automated first pass, not a substitute for human review. Reply here and a human will follow up.</sub>\n' "${HEAD_SHA:0:7}"
           } > "$R/comment.md"
 
