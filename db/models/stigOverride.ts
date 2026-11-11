@@ -74,6 +74,7 @@ StigOverride.init(
     timestamps: false,
     indexes: [
       {
+        name: "StigOverrides_type_StigDatumId_SystemId_unique",
         unique: true,
         fields: ["type", "StigDatumId", "SystemId"],
       },

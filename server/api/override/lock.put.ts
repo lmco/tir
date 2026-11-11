@@ -1,6 +1,5 @@
 import { DateTime } from "luxon";
-import { Boundary_User, BoundaryRole, System } from "~/db/models";
-import { Boundary } from "~/db/models/boundary";
+import { System } from "~/db/models";
 import { StigOverride } from "~/db/models/stigOverride";
 
 export default defineEventHandler(async (event) => {
@@ -30,15 +29,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const system = await System.findOne({
-    include: {
-      model: Boundary,
-      include: [
-        {
-          model: Boundary_User,
-          include: [{ model: BoundaryRole }],
-        },
-      ],
-    },
     where: {
       id: systemId,
     },
