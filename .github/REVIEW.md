@@ -25,6 +25,9 @@ raise the finding again, and lists it in a closing section so human reviewers
 still see it. Write "declined" when the finding will not be acted on and
 "deferred" when it moves to another issue or pull request, and name that issue
 or pull request. Inline review threads and review summaries are not read.
+To take a decline back, edit or delete the comment, since hiding it changes
+nothing. Comments are read newest first, and reading stops at the first one
+that would take the total past 8000 characters.
 
 ## Repository conventions
 

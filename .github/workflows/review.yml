@@ -47,16 +47,25 @@ jobs:
           jq -r '.title' "$RUNNER_TEMP/review/pr.json" > "$RUNNER_TEMP/review/title.txt"
           jq -r '.body // ""' "$RUNNER_TEMP/review/pr.json" > "$RUNNER_TEMP/review/body.md"
           echo "base_ref=$(jq -r '.baseRefName' "$RUNNER_TEMP/review/pr.json")" >> "$GITHUB_OUTPUT"
-          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            | jq -rs --argjson max 8000 '
-                [ .[][]
-                  | select(.user.type == "User" and (.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")))
-                  | "### \(.user.login) on \(.created_at)\n\n\(.body)\n" ]
-                | reverse
-                | reduce .[] as $c ({size: 0, kept: []};
-                    if .size + ($c | length) > $max then .
-                    else .size += ($c | length) | .kept = [$c] + .kept end)
-                | .kept[]' > "$RUNNER_TEMP/review/comments.md"
+          if ! gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            > "$RUNNER_TEMP/review/comments.json"; then
+            echo "::warning::could not read the pull request comments, reviewing without them"
+            echo '[]' > "$RUNNER_TEMP/review/comments.json"
+          fi
+          jq -s --argjson max 8000 '
+              [ .[][]
+                | select(.user.type == "User" and (.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")))
+                | "### \(.user.login) on \(.created_at)\n\n\(.body)\n" ]
+              | reverse
+              | reduce .[] as $c ({size: 0, kept: [], dropped: 0};
+                  if .dropped > 0 or .size + ($c | length) > $max then .dropped += 1
+                  else .size += ($c | length) | .kept = [$c] + .kept end)' \
+            "$RUNNER_TEMP/review/comments.json" > "$RUNNER_TEMP/review/selected.json"
+          jq -r '.kept[]' "$RUNNER_TEMP/review/selected.json" > "$RUNNER_TEMP/review/comments.md"
+          dropped=$(jq '.dropped' "$RUNNER_TEMP/review/selected.json")
+          if [ "$dropped" -gt 0 ]; then
+            echo "::warning::left $dropped maintainer comments out of the review, the 8000 character cap was reached"
+          fi
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -128,7 +137,8 @@ jobs:
             path/to/file.ts - a short phrase naming the finding (login of the
             commenter, without an @). For a deferred finding add the issue or
             pull request the comment names. Leave the section out when there is
-            nothing to list.
+            nothing to list. When every finding was left out this way, write
+            "No findings." where the findings would go and keep the section.
 
           You may read and search any file in the checkout to understand context
           around the diff. You have no shell and cannot modify anything.
