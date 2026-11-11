@@ -2,7 +2,7 @@
   <div class="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
     <div class="rounded-lg bg-white py-4 dark:bg-gray-800">
       <div class="mx-auto max-w-7xl px-6 lg:px-8">
-        <div class="mx-0 mx-auto max-w-2xl max-w-none space-y-16 sm:space-y-20">
+        <div class="mx-auto max-w-none space-y-16 sm:space-y-20">
           <div class="flex-auto">
             <a class="mb-2 flex cursor-pointer text-indigo-500 hover:text-indigo-400" @click="backButton()">
               <ArrowUturnLeftIcon class="mr-2 h-5 w-5" />
@@ -101,7 +101,7 @@
                         @click="
                           [
                             findCheck(check.id),
-                            (editId = check.EvaluationItems[0].id),
+                            (editId = check.EvaluationItems?.[0]?.id ?? null),
                             (editFinding = updateFinding(check.AssessmentItems)),
                             (editComments = updateComment(check.AssessmentItems)),
                             setFields(check),
@@ -166,7 +166,7 @@
               </ul>
             </nav>
           </aside>
-          <main class="flex-auto px-4 px-6 lg:px-0">
+          <main class="flex-auto px-6 lg:px-0">
             <!-- CHECK INFO BOX -->
             <div class="flex items-center justify-between">
               <div class="min-w-0 flex-1">
@@ -288,14 +288,15 @@
                   <DisclosurePanel
                     class="h-84 text-md w-full rounded-b-lg bg-gray-300/5 px-4 py-4 text-left font-medium text-white focus:outline-none focus-visible:ring focus-visible:ring-purple-500 focus-visible:ring-opacity-75"
                   >
-                    <PoamFields :evaluation-item="evaluationItem" />
+                    <PoamFields v-if="evaluationItem" :evaluation-item="evaluationItem" />
                   </DisclosurePanel>
                 </transition>
               </Disclosure>
 
               <div class="mt-4 flex justify-end">
                 <button
-                  class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!editId"
                   @click="editAssessmentApi()"
                 >
                   Save
@@ -347,7 +348,7 @@ import {
 import { Listbox, ListboxButton, Disclosure, DisclosureButton, DisclosurePanel } from "@headlessui/vue";
 import { storeToRefs } from "pinia";
 import { useIdStorageStore } from "~~/stores/IdStorage";
-import { catSeverityToStig, stigSeverityToCat } from "~/utils/stig";
+import { stigSeverityToCat } from "~/utils/stig";
 
 const route = useRoute();
 const showErrorNotification = ref(false);
@@ -366,23 +367,13 @@ const { data: evaluation, error: queryError } = await useFetch("/api/evaluation/
   query: stigBoundary,
   key: "evaluationAPI",
 });
-if (queryError.value && queryError.value.statusCode === 404) {
+if (queryError.value?.statusCode === 404) {
   await useFetch("/api/evaluation/create", {
     method: "POST",
     body: stigBoundary,
   });
-
-  refreshNuxtData("evaluationAPI");
+  await refreshNuxtData("evaluationAPI");
 }
-
-// const rawOverrideData = await useFetch("/api/override/listAll", {
-//   method: "GET",
-//   query: {
-//     boundaryId: route.params.boundaryId,
-//     stigId: route.params.StigId,
-//     stigDatumId: listOfChecks[checkData].id,
-//   },
-// });
 
 // Filter Items
 const stigDatumItems = computed(() => {
@@ -506,19 +497,19 @@ async function backButton() {
 // POAM Fields
 
 function setFields(check) {
-  evaluationItem.value = check.EvaluationItems[0];
+  evaluationItem.value = check.EvaluationItems?.[0] ?? null;
   checkStatus.value = listOfChecks.value[assessmentId.value].status;
   startingPosition.value = statusOptions.findIndex((o) => o.title === checkStatus.value);
   selected.value = statusOptions[startingPosition.value];
 }
 
 // Edit API
-const editId = ref(listOfChecks.value[assessmentId.value].EvaluationItems[0].id);
+const editId = ref(listOfChecks.value[assessmentId.value]?.EvaluationItems?.[0]?.id ?? null);
 const editFinding = ref();
 const editComments = ref();
 let findingList = "";
 let commentList = "";
-const assessmentList = listOfChecks.value[assessmentId.value].AssessmentItems;
+const assessmentList = listOfChecks.value[assessmentId.value]?.AssessmentItems ?? [];
 for (let i = 0; i < assessmentList.length; i++) {
   const systemName = assessmentList[i].Assessment.System?.name || assessmentList[i].Assessment.System?.nam || "unknown";
 
@@ -562,6 +553,7 @@ function updateComment(newAssessmentList) {
 }
 
 async function editAssessmentApi() {
+  if (!editId.value || !evaluationItem.value) return;
   try {
     const milestoneText = [];
     evaluationItem.value.Milestones.forEach((o) => {

@@ -7,8 +7,8 @@
         <div class="mx-auto max-w-7xl sm:px-6 lg:px-8">
           <div class="flex h-16 items-center justify-between px-4 sm:px-0">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <img class="h-14 w-14" src="../assets/TIR_Icon.svg" alt="Your Company" />
+              <div class="shrink-0">
+                <img class="size-14" src="../assets/TIR_Icon.svg" alt="Your Company" />
               </div>
               <div class="hidden md:block">
                 <div class="ml-6 flex items-baseline space-x-4">
@@ -41,7 +41,7 @@
                   >
                     <QuestionMarkCircleIcon
                       :class="open ? 'dark:text-white-300' : 'dark:text-gray-400'"
-                      class="h-8 w-8 transition duration-150 ease-in-out group-hover:text-white"
+                      class="size-8 transition duration-150 ease-in-out group-hover:text-white"
                       aria-hidden="true"
                     />
                   </PopoverButton>
@@ -53,7 +53,7 @@
                     leave-from-class="translate-y-0 opacity-100"
                     leave-to-class="translate-y-1 opacity-0"
                   >
-                    <PopoverPanel class="absolute left-1/2 z-10 mt-3 w-max max-w-xs -translate-x-1/2 transform px-2">
+                    <PopoverPanel class="absolute left-1/2 z-10 mt-3 w-max max-w-xs -translate-x-1/2 px-2">
                       <div class="overflow-hidden rounded-lg shadow-lg ring-1 ring-black/5">
                         <div class="relative bg-white p-4 text-sm text-gray-700">
                           <p class="w-max border-b-2 border-indigo-400 pb-2">Date: {{ dateCleaner }}</p>
@@ -72,7 +72,7 @@
                       class="flex max-w-xs items-center rounded-full text-sm text-gray-500 hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-white"
                     >
                       <span class="sr-only">Open user menu</span>
-                      <UserIcon class="h-8 w-8" aria-hidden="true" />
+                      <UserIcon class="size-8" aria-hidden="true" />
                     </MenuButton>
                   </div>
                   <transition
@@ -84,7 +84,7 @@
                     leave-to-class="transform opacity-0 scale-95"
                   >
                     <MenuItems
-                      class="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+                      class="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 focus:outline-none"
                     >
                       <MenuItem v-for="(userItem, index) in userNavigation" :key="userItem.name" v-slot="{ active }">
                         <template v-if="userItem">
@@ -98,8 +98,8 @@
                           </NuxtLink>
                           <button
                             v-else-if="userItem.onClick"
-                            @click="userItem.onClick"
                             class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                            @click="userItem.onClick"
                           >
                             {{ userItem.name }}
                           </button>
@@ -117,10 +117,10 @@
                       class="flex max-w-xs items-center rounded-full text-sm text-gray-500 hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 dark:text-gray-400 dark:hover:text-white"
                     >
                       <span class="sr-only">Bell Icon</span>
-                      <BellIcon class="h-8 w-8" aria-hidden="true" />
+                      <BellIcon class="size-8" aria-hidden="true" />
                       <span
                         v-if="unreadAlertCount > 0"
-                        class="absolute bottom-0 right-0 inline-flex -translate-y-1/2 translate-x-1/2 transform items-center justify-center rounded-full bg-red-500 px-2 py-1 text-xs font-bold leading-none text-white"
+                        class="absolute bottom-0 right-0 inline-flex -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full bg-red-500 px-2 py-1 text-xs font-bold leading-none text-white"
                       >
                         {{ unreadAlertCount > 10 ? "10+" : unreadAlertCount }}
                       </span>
@@ -134,9 +134,9 @@
                       leave-to-class="transform opacity-0 scale-95"
                     >
                       <MenuItems
-                        class="menu-items-container absolute right-0 z-10 mt-2 w-72 origin-top-right rounded-md bg-white pt-2 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+                        class="absolute right-0 z-10 mt-2 w-72 origin-top-right rounded-md bg-white pt-2 shadow-lg ring-1 ring-black/5 focus:outline-none dark:bg-gray-700"
                       >
-                        <ul role="list" class="divide-gray-250 max-h-72 divide-y overflow-y-auto">
+                        <ul role="list" class="max-h-72 divide-y divide-gray-200 overflow-y-auto dark:divide-gray-600">
                           <MenuItem
                             v-for="alert in userBell"
                             :key="alert.id"
@@ -145,13 +145,13 @@
                             <div class="mx-1 flex min-w-0">
                               <div />
                               <div class="min-w-0 flex-auto">
-                                <p class="text-sm font-semibold leading-6 text-gray-900">
+                                <p class="text-sm font-semibold leading-6 text-gray-900 dark:text-white">
                                   {{ alert.NotificationCategory?.category || "Unknown" }}
                                 </p>
-                                <p class="mt-1 truncate text-xs leading-5 text-gray-500">{{ alert.message || "" }}</p>
+                                <p class="mt-1 truncate text-xs leading-5 text-gray-500 dark:text-gray-200">{{ alert.message || "" }}</p>
                               </div>
                               <button @click="() => resetInput(alert)">
-                                <XMarkIcon class="mr-3 h-5 w-5 text-gray-900 hover:text-red-500"></XMarkIcon>
+                                <XMarkIcon class="mr-3 size-5 text-gray-900 hover:text-red-500 dark:text-white dark:hover:text-red-500"></XMarkIcon>
                               </button>
                             </div>
                           </MenuItem>
@@ -159,13 +159,13 @@
                             <div class="mx-2 flex min-w-0 gap-x-4">
                               <div />
                               <div class="min-w-0 flex-auto">
-                                <p class="text-sm font-semibold leading-6 text-gray-900">No Alerts</p>
-                                <p class="mt-1 truncate text-xs leading-5 text-gray-500">:(</p>
+                                <p class="text-sm font-semibold leading-6 text-gray-900 dark:text-white">No Alerts</p>
+                                <p class="mt-1 truncate text-xs leading-5 text-gray-500 dark:text-gray-200">:(</p>
                               </div>
                             </div>
                           </MenuItem>
                         </ul>
-                        <div class="flex justify-center rounded-b-md bg-gray-200">
+                        <div class="flex justify-center rounded-b-md bg-gray-200 dark:bg-gray-800">
                           <button
                             class="mx-3 my-1.5 flex w-48 items-center justify-center rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-gray-300 hover:bg-indigo-500 focus-visible:outline-offset-0"
                             @click="showPopup = true"
@@ -181,7 +181,7 @@
                 <!-- Alert Popup -->
                 <div
                   v-if="showPopup"
-                  class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-20 dark:bg-white/20"
+                  class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-white/20"
                 >
                   <div class="max-h-[600px] w-[1024px] max-w-5xl rounded-lg bg-gray-100 py-10 dark:bg-gray-900">
                     <div class="flex-auto px-8">
@@ -233,7 +233,7 @@
                             </td>
                             <td class="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                               <button class="text-red-600 hover:text-red-900" @click="deleteTheAlert(alert.id)">
-                                <TrashIcon class="h-5 w-5" aria-hidden="true" />
+                                <TrashIcon class="size-5" aria-hidden="true" />
                               </button>
                             </td>
                           </tr>
@@ -241,7 +241,7 @@
                       </table>
                     </div>
                     <button
-                      class="front-bold mx-8 mt-4 rounded bg-red-500 px-4 py-2 text-white hover:bg-red-700"
+                      class="mx-8 mt-4 rounded bg-red-500 px-4 py-2 font-bold text-white hover:bg-red-700"
                       @click="showPopup = false"
                     >
                       Close
@@ -310,7 +310,7 @@ const { data: currentUser, error: userError } = useAsyncData(
 const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
   "currentAlert",
   async () => {
-    if (!currentUser.value?.id) return null;
+    if (!currentUser.value?.id) return [];
     return await $fetch("/api/config/alert", {
       method: "GET",
       query: { userId: currentUser.value.id },
@@ -325,7 +325,7 @@ const { data: currentAbout } = useAsyncData("currentAbout", async () => {
     return await $fetch("/api/config/about", { method: "GET" });
   } catch (error) {
     console.error("Failed to fetch about data:", error);
-    return null; // Return null on error
+    return {}; // Avoid returning null (triggers Nuxt useAsyncData warning)
   }
 });
 

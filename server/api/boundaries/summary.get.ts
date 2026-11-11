@@ -16,7 +16,7 @@ import {
   ControlNumber,
   ControlRevision,
 } from "../../../db/models";
-import { initializeCounts } from "../../utils/findings";
+import { initializeCounts, initializeSeverityCounts, uniqueTransformSeverityCounts } from "../../utils/findings";
 import { PerfTimer } from "../../utils/perfTimer";
 import { createControlRecords } from "../../utils/controls";
 import { NessusPlugin } from "~/db/models/nessusPlugin";
@@ -33,6 +33,7 @@ import {
 import { VulnCounts } from "~/types/nessus";
 import { FindingCounts } from "~/types/findings";
 import { ControlFindingCounts } from "~/types/controlFindings";
+import { SeverityCounts } from "~/types/severity";
 import { Tier } from "~/db/models/tier";
 import { PolicyDocument } from "~/db/models/policyDocument";
 
@@ -134,7 +135,7 @@ export default defineEventHandler(async (event) => {
   };
 
   const allFindingsOrdered = await StigData.findAll({
-    attributes: ["id"],
+    attributes: ["id", "severity"],
     include: [
       {
         model: AssessmentItem,
@@ -228,6 +229,7 @@ export default defineEventHandler(async (event) => {
     stigsApplied: number[];
     override: boolean;
     findings: FindingCounts;
+    severities: SeverityCounts;
   };
 
   type StigEntry = {
@@ -237,12 +239,15 @@ export default defineEventHandler(async (event) => {
     date: string;
     lastUpdate: string;
     findings: FindingCounts;
+    severities: SeverityCounts;
   };
 
   let tempCounts = initializeCounts();
   const uniqueCounts = initializeCounts();
   const totalCounts = initializeCounts();
-
+  let tempSeverityCounts = initializeSeverityCounts();
+  const uniqueSeverityCounts = initializeSeverityCounts();
+  const totalSeverityCounts = initializeSeverityCounts();
   const boundaryView: StigEntry[] = [];
   const systemView: SystemEntry[] = [];
 
@@ -259,26 +264,40 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    if (!uniqueFinding.Stigs[0] || !uniqueFinding.Stigs[0].id) {
-      break;
+    if (!uniqueFinding.Stigs[0]?.id) {
+      continue;
     }
 
     for (let j = 0; j < uniqueFinding.AssessmentItems.length; j++) {
       const assessmentItem = uniqueFinding.AssessmentItems[j];
       const assessment = assessmentItem.Assessment!;
-      let override = false;
-      if (assessmentItem.statusOverride) {
-        override = true;
-      }
+      const override = Boolean(
+        assessmentItem.statusOverride ||
+        assessmentItem.severityOverride,
+      );
       const status = assessmentItem.statusOverride || assessmentItem.status;
       const rawStatus = assessmentItem.status;
-
+      const severity = assessmentItem.severityOverride || uniqueFinding.severity;
       perfTimer.start("Findings Map");
       const currentFinding = {
         Open: status === "Open" ? 1 : 0,
         NotAFinding: status === "NotAFinding" ? 1 : 0,
         Not_Reviewed: status === "Not_Reviewed" ? 1 : 0,
         Not_Applicable: status === "Not_Applicable" ? 1 : 0,
+      };
+
+      const currentSeverity = {
+        catI: status === "Open" && severity === "high" ? 1 : 0,
+        catII: status === "Open" && severity === "medium" ? 1 : 0,
+        catIII: status === "Open" && severity === "low" ? 1 : 0,
+      };
+
+      const rawSeverity = uniqueFinding.severity;
+
+      const rawSeverityCounts = {
+        catI: rawStatus === "Open" && rawSeverity === "high" ? 1 : 0,
+        catII: rawStatus === "Open" && rawSeverity === "medium" ? 1 : 0,
+        catIII: rawStatus === "Open" && rawSeverity === "low" ? 1 : 0,
       };
 
       const rawFinding = {
@@ -290,6 +309,9 @@ export default defineEventHandler(async (event) => {
       perfTimer.stop("Findings Map");
       addFindings(tempCounts, currentFinding);
       addFindings(totalCounts, currentFinding);
+
+      addSeverityCounts(tempSeverityCounts, currentSeverity);
+      addSeverityCounts(totalSeverityCounts, currentSeverity);
 
       if (!assessment.System) {
         throw createError({
@@ -304,13 +326,16 @@ export default defineEventHandler(async (event) => {
         override,
         uniqueFinding.Stigs[0].id,
         rawFinding,
+        rawSeverityCounts,
       );
     }
 
     addFindings(uniqueCounts, uniqueTransformCounts(tempCounts));
-    findOrAddStigById(uniqueFinding.Stigs[0].id, uniqueTransformCounts(tempCounts));
+    addSeverityCounts(uniqueSeverityCounts, uniqueTransformSeverityCounts(tempSeverityCounts));
+    findOrAddStigById(uniqueFinding.Stigs[0].id, uniqueTransformCounts(tempCounts), uniqueTransformSeverityCounts(tempSeverityCounts),);
 
     tempCounts = initializeCounts();
+    tempSeverityCounts = initializeSeverityCounts();
   }
 
   const stigDetails = [];
@@ -577,6 +602,8 @@ export default defineEventHandler(async (event) => {
     vulnUniqueCounts,
     auditCounts,
     assessorCounts,
+    uniqueSeverityCounts,
+    totalSeverityCounts,
   };
 
   return boundarySummary;
@@ -587,6 +614,7 @@ export default defineEventHandler(async (event) => {
     override: boolean,
     stigId?: number,
     findings?: FindingCounts,
+    severities?: SeverityCounts,
   ): void {
     const existingSystem = systemView.find((systemEntry) => systemEntry.id === id);
     let targetSystem: SystemEntry;
@@ -598,6 +626,7 @@ export default defineEventHandler(async (event) => {
         override,
         stigsApplied: [],
         findings: initializeCounts(),
+        severities: initializeSeverityCounts(),
       };
     } else {
       targetSystem = existingSystem;
@@ -605,6 +634,9 @@ export default defineEventHandler(async (event) => {
 
     if (findings) {
       addFindings(targetSystem.findings, findings);
+    }
+    if (severities) {
+      addSeverityCounts(targetSystem.severities, severities);
     }
 
     if (stigId) {
@@ -622,11 +654,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  function findOrAddStigById(id: number, findings: FindingCounts): void {
+  function findOrAddStigById(id: number, findings: FindingCounts, severities: SeverityCounts): void {
     const existingSystem = boundaryView.find((stigEntry) => stigEntry.id === id);
 
     if (existingSystem) {
       addFindings(existingSystem.findings, findings);
+      addSeverityCounts(existingSystem.severities, severities);
     } else {
       const newStig: StigEntry = {
         id,
@@ -635,6 +668,7 @@ export default defineEventHandler(async (event) => {
         date: "",
         lastUpdate: "",
         findings,
+        severities,
       };
       boundaryView.push(newStig);
     }
@@ -654,5 +688,14 @@ export default defineEventHandler(async (event) => {
     value: number,
   ): void {
     target[key] = ((target[key] || 0) + value) as T[keyof T];
+  }
+
+  function addSeverityCounts(
+    target: SeverityCounts,
+    source: SeverityCounts,
+  ) {
+    target.catI += source.catI;
+    target.catII += source.catII;
+    target.catIII += source.catIII;
   }
 });

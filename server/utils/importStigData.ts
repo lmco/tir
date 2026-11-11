@@ -1,8 +1,21 @@
 import { parseStringPromise } from "xml2js";
-import { Transaction, ValidationError } from "sequelize";
+import { Transaction } from "sequelize";
 import { Stig, StigData, StigResponsibility, StigReference, StigIdent } from "../../db/models";
 // import { hashObj } from "./hash";
 import { PerfTimer } from "./perfTimer";
+
+function errorSummary(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return typeof error === "string" ? error : JSON.stringify(error) ?? "unknown error";
+  }
+  const original = (error as { original?: { column?: string; constraint?: string; detail?: string } })
+    .original;
+  const parts = [`${error.name}: ${error.message}`];
+  if (original?.column) parts.push(`column=${original.column}`);
+  if (original?.constraint) parts.push(`constraint=${original.constraint}`);
+  if (original?.detail) parts.push(`detail=${original.detail}`);
+  return parts.join(" | ");
+}
 
 export async function parseStigData(
   stigGroupObj: any,
@@ -12,7 +25,7 @@ export async function parseStigData(
   currentStigIdents: StigIdent[],
   stigImportTransaction: Transaction,
   perfTimer?: PerfTimer,
-): Promise<{ newStigData: StigData; error: boolean }> {
+): Promise<{ newStigData: StigData; created: boolean; error: boolean }> {
   // const hash = hashObj(stigGroupObj);
 
   perfTimer?.start("NewFindOrBuild");
@@ -25,7 +38,6 @@ export async function parseStigData(
     // console.log("No match found.  Creating new stig data:", stigGroupObj.Rule.$["id"]);
     logger.debug(`No match found.  Creating new stig data: ${stigGroupObj.Rule.$["id"]}`);
   } else {
-    console.log("Match Found:", stigGroupObj.Rule.$["id"]);
     logger.debug(`Match Found: ${stigGroupObj.Rule.$["id"]}`);
   }
 
@@ -101,30 +113,21 @@ export async function parseStigData(
       );
       perfTimer?.stop("associateIdent");
     } catch (error) {
-      if (error instanceof ValidationError) {
-        logger.error(
-          `Error Saving StigData ${newStigData.dataValues.vuln_num} from ${stig.dataValues.title}`,
-          {
-            Error: error.message,
-            ErrorDetails: error.original.stack,
-          },
-        );
-        console.error(`Error saving stigData in ${stig.dataValues.title}`);
-      } else {
-        console.log(
-          `Error parsing svkey ${stigGroupObj.Rule.$["id"]} in stig ${stig.dataValues.title}\n${error}`,
-        );
-        logger.error(
-          `Error parsing svkey ${stigGroupObj.Rule.$["id"]} in stig ${stig.dataValues.title}`,
-          error,
-        );
-      }
+      const longFields = Object.entries(newStigData.dataValues)
+        .filter(([, v]) => typeof v === "string" && v.length > 255)
+        .map(([k, v]) => `${k}=${(v as string).length}`)
+        .join(", ");
+      const longFieldsNote = longFields ? ` | fields>255: ${longFields}` : "";
+      logger.error(
+        `Error saving StigData ${newStigData.dataValues.vuln_num} (${stigGroupObj.Rule.$.id}) in stig ${stig.dataValues.title}: ${errorSummary(error)}${longFieldsNote}`,
+      );
+      return { newStigData, created, error: true };
     }
   } else {
     await stig.addStigData(newStigData, { transaction: stigImportTransaction });
   }
 
-  return { newStigData, error: false };
+  return { newStigData, created, error: false };
 }
 
 function parseStigDataObj(stigGroupObj: any, newStigData: StigData) {
@@ -132,7 +135,12 @@ function parseStigDataObj(stigGroupObj: any, newStigData: StigData) {
   newStigData.dataValues.group_title = stigGroupObj.title;
   newStigData.dataValues.description = stigGroupObj.description;
   newStigData.dataValues.rule_id = stigGroupObj.Rule.$["id"];
-  newStigData.dataValues.severity = stigGroupObj.Rule.$["severity"];
+  const rawSeverity = stigGroupObj.Rule.$.severity;
+  newStigData.dataValues.severity = ["unknown", "info", "low", "medium", "high"].includes(
+    rawSeverity,
+  )
+    ? rawSeverity
+    : "unknown";
   newStigData.dataValues.weight = stigGroupObj.Rule.$["weight"];
   newStigData.dataValues.rule_ver = stigGroupObj.Rule.version;
   newStigData.dataValues.rule_title = stigGroupObj.Rule.title;
@@ -191,15 +199,13 @@ async function associateResponsibility(
 
         currentStigResponsibilities.push(stigResponsibility);
       } else {
-        console.log("stigResponsibility cache hit");
         stigResponsibility = existingStigResponsibility;
       }
 
       try {
         await newStigData.addStigResponsibility(stigResponsibility, { transaction });
       } catch (error) {
-        console.log("Error associating responsibility to stigdata", error);
-        logger.error(`Error associating responsibility to stigdata`, { error });
+        logger.error(`Error associating responsibility to stigdata: ${errorSummary(error)}`);
       }
     }
   }
@@ -243,8 +249,7 @@ async function associateReference(
       try {
         await newStigData.addStigReference(stigReference, { transaction });
       } catch (error) {
-        logger.error("Error associating reference to stigdata");
-        console.log("Error associating reference to stigdata", error);
+        logger.error(`Error associating reference to stigdata: ${errorSummary(error)}`);
       }
     }
   }
@@ -287,8 +292,7 @@ async function associateIdent(
       try {
         await newStigData.addStigIdent(stigIdent, { transaction });
       } catch (error) {
-        logger.error("Error associating ident to stigdata");
-        console.log("Error associating ident to stigdata", error);
+        logger.error(`Error associating ident to stigdata: ${errorSummary(error)}`);
       }
     }
   }
