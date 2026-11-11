@@ -270,6 +270,20 @@ export default defineEventHandler(async (event) => {
         }
         // end for assessments loop
 
+        // Verify all assessment systems are present before creating imported records
+        const importedSystemIds = new Set(boundary.Boundary.Systems.map((system) => system.id));
+        const assessmentWithMissingSystem = boundary.Assessments.find(
+          (assessment) => !importedSystemIds.has(assessment.SystemId),
+        );
+        if (assessmentWithMissingSystem) {
+          throw createError({
+            statusCode: 400,
+            statusMessage:
+              `Assessment references a SystemId not present in the imported boundary's systems: ` +
+              assessmentWithMissingSystem.SystemId,
+          });
+        }
+
         // Verify there are no missing stigs in imported boundary library
         // If no missing stig data exists, lets proceed to creating boundary and eval objects
         if (missingStigs.length != 0) {
