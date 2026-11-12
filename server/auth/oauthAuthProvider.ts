@@ -215,12 +215,11 @@ export class OAuthAuthProvider extends AuthProvider {
   private async fetchGitHubGroups(token: string, email: string): Promise<string[]> {
     if (this.groupMappings.length === 0) return [];
     const api = KNOWN_PROVIDERS.github.apiBase("");
-    const res = await fetch(`${api}/user/teams?per_page=100`, { headers: githubHeaders(token) });
-    if (!res.ok) {
-      logger.warning({ service: "auth", message: `Could not fetch GitHub teams for ${email}: ${res.status}` });
+    const teams = await fetchPages(`${api}/user/teams`, githubHeaders(token), (page) => page);
+    if (!teams) {
+      logger.warning({ service: "auth", message: `Could not fetch GitHub teams for ${email}` });
       throw new H3Error("Unauthorized: Could not verify GitHub team membership.");
     }
-    const teams: any[] = await res.json();
     const groups = teams.map((t) => `${t.organization?.login?.toLowerCase()}/${t.slug?.toLowerCase()}`);
     logger.debug({
       service: "auth",
@@ -235,20 +234,20 @@ export class OAuthAuthProvider extends AuthProvider {
     if (!res.ok) throw new Error("Failed to fetch GitLab user info.");
     const u = await res.json();
     if (!u.email) throw new Error("GitLab user has no email address.");
+    if (this.config.requireVerifiedEmail && !u.confirmed_at) {
+      throw new Error("GitLab has not confirmed this user's email address.");
+    }
     return { email: u.email, ...splitName(u.name || u.username) };
   }
 
   private async fetchGitLabGroups(token: string, email: string): Promise<string[]> {
     if (this.groupMappings.length === 0) return [];
     const api = KNOWN_PROVIDERS.gitlab.apiBase(this.config.baseUrl);
-    const res = await fetch(`${api}/groups?min_access_level=10&per_page=100`, {
-      headers: bearerHeaders(token),
-    });
-    if (!res.ok) {
-      logger.warning({ service: "auth", message: `Could not fetch GitLab groups for ${email}: ${res.status}` });
+    const groups = await fetchPages(`${api}/groups?min_access_level=10`, bearerHeaders(token), (page) => page);
+    if (!groups) {
+      logger.warning({ service: "auth", message: `Could not fetch GitLab groups for ${email}` });
       throw new H3Error("Unauthorized: Could not verify GitLab group membership.");
     }
-    const groups: any[] = await res.json();
     return groups.map((g) => g.full_path?.toLowerCase());
   }
 
@@ -270,15 +269,12 @@ export class OAuthAuthProvider extends AuthProvider {
   private async fetchBitbucketGroups(token: string, email: string): Promise<string[]> {
     if (this.groupMappings.length === 0) return [];
     const api = KNOWN_PROVIDERS.bitbucket.apiBase("");
-    const res = await fetch(`${api}/user/permissions/workspaces?pagelen=100`, {
-      headers: bearerHeaders(token),
-    });
-    if (!res.ok) {
-      logger.warning({ service: "auth", message: `Could not fetch Bitbucket workspaces for ${email}: ${res.status}` });
+    const values = await fetchBitbucketPages(`${api}/user/permissions/workspaces`, bearerHeaders(token));
+    if (!values) {
+      logger.warning({ service: "auth", message: `Could not fetch Bitbucket workspaces for ${email}` });
       throw new H3Error("Unauthorized: Could not verify Bitbucket workspace membership.");
     }
-    const data = await res.json();
-    return (data.values || []).map((v: any) => v.workspace?.slug?.toLowerCase());
+    return values.map((v: any) => v.workspace?.slug?.toLowerCase());
   }
 
   private async fetchUserInfo(userInfoUrl: string, token: string): Promise<any> {
@@ -288,6 +284,41 @@ export class OAuthAuthProvider extends AuthProvider {
     return res.json();
   }
 
+}
+
+const PAGE_SIZE = 100;
+const MAX_PAGES = 10;
+
+/** Every item across page-numbered results, or null when any page fails. */
+async function fetchPages(
+  url: string,
+  headers: Record<string, string>,
+  items: (page: any) => any[],
+): Promise<any[] | null> {
+  const all: any[] = [];
+  const sep = url.includes("?") ? "&" : "?";
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const res = await fetch(`${url}${sep}per_page=${PAGE_SIZE}&page=${page}`, { headers });
+    if (!res.ok) return null;
+    const batch = items(await res.json());
+    all.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
+/** Every value across Bitbucket's cursor-style pages, or null when any page fails. */
+async function fetchBitbucketPages(url: string, headers: Record<string, string>): Promise<any[] | null> {
+  const all: any[] = [];
+  let next: string | undefined = `${url}?pagelen=${PAGE_SIZE}`;
+  for (let page = 1; next && page <= MAX_PAGES; page++) {
+    const res = await fetch(next, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    all.push(...(data.values || []));
+    next = data.next;
+  }
+  return all;
 }
 
 function parseGroupMappings(raw: string): GroupMapping[] {

@@ -231,7 +231,7 @@
         </div>
       </div>
       <div
-        v-if="provider.providerType === 'custom'"
+        v-if="provider.providerType === 'custom' || provider.providerType === 'gitlab'"
         class="flex items-start gap-4"
       >
         <label
