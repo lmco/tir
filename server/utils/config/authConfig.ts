@@ -15,13 +15,6 @@ import {
   OAUTH_PROVIDER_SCHEMA,
 } from "~/types/auth";
 
-// --- Key conventions ---
-// auth:local:<field>
-// auth:oidc:index  +  auth:oidc:<id>:<field>
-// auth:ldap:index  +  auth:ldap:<id>:<field>
-// auth:oauth:index +  auth:oauth:<id>:<field>
-// auth:defaultLoginProvider
-
 const OIDC_INDEX_KEY = "auth:oidc:index";
 const LDAP_INDEX_KEY = "auth:ldap:index";
 const OAUTH_INDEX_KEY = "auth:oauth:index";

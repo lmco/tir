@@ -3,7 +3,6 @@
     ref="root"
     class="relative"
   >
-    <!-- Trigger -->
     <button
       v-if="asIcon"
       type="button"
@@ -23,7 +22,6 @@
       Remove
     </button>
 
-    <!-- Confirm popover -->
     <Transition
       enter-active-class="transition duration-150 ease-out"
       enter-from-class="-translate-y-0.5 opacity-0"
@@ -83,7 +81,6 @@ function confirm() {
   emit("remove");
 }
 
-// Dismiss on outside click
 function onPointerDown(e: PointerEvent) {
   if (open.value && root.value && !root.value.contains(e.target as Node)) {
     open.value = false;

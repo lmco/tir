@@ -136,7 +136,6 @@ export class LDAPAuthProvider extends AuthProvider {
     try {
       await client.bind(bindDn, ldapPassword);
 
-      // Search by sAMAccountName or userPrincipalName - handle both domain\user and user@domain
       const escaped = escapeFilter(username);
       const filter = `(|(sAMAccountName=${escaped})(userPrincipalName=${escaped}))`;
 
@@ -163,7 +162,6 @@ export class LDAPAuthProvider extends AuthProvider {
 
       const adUser = searchEntries[0] as Entry;
 
-      // Check disabled account flag (bit 1 of userAccountControl)
       const uac = Number.parseInt(adUser.userAccountControl as string, 10);
       if (!Number.isNaN(uac) && uac & UAC_ACCOUNT_DISABLED) {
         logger.info({

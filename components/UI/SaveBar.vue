@@ -12,7 +12,6 @@
       class="sticky bottom-0 z-30 mt-8 border-t border-gray-200 bg-white/95 px-6 py-3 backdrop-blur dark:border-white/10 dark:bg-gray-800/95"
     >
       <div class="flex items-center justify-between gap-4">
-        <!-- Status -->
         <span class="flex items-center gap-2 text-sm">
           <span
             v-if="saving"
@@ -37,7 +36,6 @@
           </span>
         </span>
 
-        <!-- Actions -->
         <div class="flex items-center gap-2">
           <button
             type="button"

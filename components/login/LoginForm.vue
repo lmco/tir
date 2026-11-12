@@ -108,7 +108,6 @@
     />
   </form>
 
-  <!-- Single Sign On Buttons -->
   <template v-if="props.ssoProviders.length > 0">
     <div :class="props.hasCredentialAuth ? 'my-4' : 'mb-4 mt-12'">
       <div class="relative">

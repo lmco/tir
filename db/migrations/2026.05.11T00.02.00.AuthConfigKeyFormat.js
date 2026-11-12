@@ -148,8 +148,7 @@ export const down = async ({ context: sequelize }) => {
           transaction: migration,
         },
       );
-     
-      // Delete all additional providers
+
       for (const id of oidcIds.slice(1)) {
         await deleteAllForProvider(sequelize, `auth:oidc:${id}`, migration);
       }
@@ -188,8 +187,7 @@ export const down = async ({ context: sequelize }) => {
           transaction: migration,
         },
       );
-     
-      // Delete all additional providers
+
       for (const id of ldapIds.slice(1)) {
         await deleteAllForProvider(sequelize, `auth:ldap:${id}`, migration);
       }
