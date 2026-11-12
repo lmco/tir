@@ -10,38 +10,59 @@
 
     <div class="flex h-screen flex-1 flex-col justify-between px-6 py-8 lg:px-8">
       <div class="sm:mx-auto sm:w-full sm:max-w-sm">
-        <img class="mx-auto h-40 w-40" src="../assets/TIR_Icon.svg" alt="Your Company" />
+        <img
+          class="mx-auto h-40 w-40"
+          src="../assets/TIR_Icon.svg"
+          alt="Your Company"
+        />
         <h1 class="mt-8 text-center text-3xl font-bold text-gray-800 dark:text-white">Welcome to TIR</h1>
         <h4 class="mt-5 text-center text-xl font-bold text-gray-800 dark:text-white">Sign in to your account</h4>
 
         <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-          <div class="sm:hidden">
-            <label for="authMethods" class="sr-only">Select authentication method</label>
+          <div
+            v-if="hasCredentialAuth"
+            class="sm:hidden"
+          >
+            <label
+              for="authMethods"
+              class="sr-only"
+              >Select authentication method</label
+            >
             <select
               id="authMethods"
-              v-model="selectedAuthMethod"
+              v-model="selectedAuthKey"
               name="authMethods"
               class="block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base sm:text-sm"
             >
-              <option v-for="method in authMethods" :key="method.name" :value="method.name">
+              <option
+                v-for="method in authMethods"
+                :key="method.key"
+                :value="method.key"
+              >
                 {{ method.name }}
               </option>
             </select>
           </div>
 
-          <div class="hidden sm:block">
-            <div class="border-b border-gray-200">
-              <nav class="-mb-px flex space-x-8" aria-label="Authentication Methods">
+          <div
+            v-if="hasCredentialAuth"
+            class="hidden sm:block"
+          >
+            <div class="relative border-b border-gray-200">
+              <nav
+                class="-mb-px flex space-x-8 overflow-x-auto pb-px"
+                aria-label="Authentication Methods"
+              >
                 <div
                   v-for="method in authMethods"
-                  :key="method.name"
+                  :key="method.key"
                   :class="[
-                    method.current
+                    method.key === selectedAuthKey
                       ? 'border-indigo-500 text-indigo-600'
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700',
-                    'whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium',
+                    'cursor-pointer whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium',
                   ]"
-                  @click="selectedAuthMethod = method.name"
+                  @click="selectedAuthKey = method.key"
                 >
                   {{ method.name }}
                 </div>
@@ -51,11 +72,12 @@
 
           <div :class="{ 'pointer-events-none select-none opacity-50': loginDisabled }">
             <LoginForm
-              :auth-method="selectedAuthMethod"
+              :auth-method="selectedMethod"
               :consent-mode="consentMode"
               :consent-text="consentText"
               :title="loginBannerTitle"
-              :enabled-auth="enabledAuth"
+              :sso-providers="ssoProviders"
+              :has-credential-auth="hasCredentialAuth"
             />
           </div>
         </div>
@@ -75,12 +97,32 @@ import LoginBanner from "~/components/login/LoginBanner.vue";
 
 definePageMeta({ layout: false });
 
-const { data: authStatus, error: authError } = await useFetch("/api/auth/authStatus", {
+const { data: authStatus } = await useFetch("/api/auth/authStatus", {
   lazy: false,
   server: true,
 });
 
-const enabledAuth = computed(() => authStatus.value || { local: true, ldap: false, oidc: false });
+const enabledAuth = computed(
+  () =>
+    authStatus.value || {
+      local: true,
+      ldapProviders: [],
+      oidcProviders: [],
+      oauthProviders: [],
+      defaultLoginProvider: "local",
+    },
+);
+
+const ssoProviders = computed(() => [
+  ...(enabledAuth.value.oidcProviders || []).map((p: { id: string; label: string }) => ({
+    ...p,
+    href: `/api/auth/login/oidc?provider=${encodeURIComponent(p.id)}`,
+  })),
+  ...(enabledAuth.value.oauthProviders || []).map((p: { id: string; label: string }) => ({
+    ...p,
+    href: `/api/auth/login/oauth?provider=${encodeURIComponent(p.id)}`,
+  })),
+]);
 
 const consentMode = ref<"modal" | "checkbox" | "none">("none");
 const consentText = ref("");
@@ -111,19 +153,40 @@ const handleConsent = () => {
   loginDisabled.value = false;
 };
 
-const authMethods = ref(
-  [
-    enabledAuth.value.local && { name: "Local", current: true },
-    enabledAuth.value.ldap && { name: "LDAP", current: false },
-  ].filter(Boolean),
+interface AuthMethod {
+  key: string;
+  name: string;
+  type: "local" | "ldap";
+  providerId?: string;
+}
+
+const localMethod: AuthMethod = { key: "local", name: "Local", type: "local" };
+
+const authMethods = computed<AuthMethod[]>(() => [
+  ...(enabledAuth.value.local ? [localMethod] : []),
+  ...(enabledAuth.value.ldapProviders || []).map((p: { id: string; label: string }) => ({
+    key: `ldap:${p.id}`,
+    name: p.label,
+    type: "ldap" as const,
+    providerId: p.id,
+  })),
+]);
+
+const hasCredentialAuth = computed(() => authMethods.value.length > 0);
+
+const defaultProvider = enabledAuth.value.defaultLoginProvider || "local";
+const selectedAuthKey = ref(
+  authMethods.value.find((m) => m.key === defaultProvider)?.key ?? authMethods.value[0]?.key ?? "local",
 );
 
-const selectedAuthMethod = ref(authMethods.value.find((m) => m.current)?.name || "Local");
-
-watch(selectedAuthMethod, (newMethod, oldMethod) => {
-  const deselect = authMethods.value.find((m) => m.name === oldMethod);
-  const select = authMethods.value.find((m) => m.name === newMethod);
-  if (deselect) deselect.current = false;
-  if (select) select.current = true;
-});
+const selectedMethod = computed(
+  () => authMethods.value.find((m) => m.key === selectedAuthKey.value) ?? localMethod,
+);
 </script>
+
+<style scoped>
+nav[aria-label="Authentication Methods"] {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+</style>
