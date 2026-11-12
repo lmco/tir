@@ -28,7 +28,7 @@ const duplicateIds = (table) => `
       overrides.id,
       ROW_NUMBER() OVER (
         PARTITION BY overrides.type, overrides."SystemId", overrides."StigDatumId"
-        ORDER BY overrides.id DESC
+        ORDER BY overrides."lastUpdate" DESC, overrides.id DESC
       ) AS duplicate_rank
     FROM ${table} AS overrides
   ) ranked
