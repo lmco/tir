@@ -2,6 +2,7 @@ import {
   saveAuthConfig,
   loadAuthConfig,
   hasEnabledProvider,
+  providersNeedingSecretReentry,
 } from "~/server/utils/config/authConfig";
 import {
   validateAuthConfigInput,
@@ -25,6 +26,14 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       message: "At least one authentication provider must be enabled.",
+    });
+  }
+
+  const reentry = await providersNeedingSecretReentry(input);
+  if (reentry.length > 0) {
+    throw createError({
+      statusCode: 400,
+      message: `Re-enter the password or client secret for ${reentry.join(", ")}: the server address or client identity changed.`,
     });
   }
 

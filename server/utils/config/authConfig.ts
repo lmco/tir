@@ -109,34 +109,74 @@ async function deleteProvider(keyFn: (f: string) => string, schema: Record<strin
   await Promise.all(Object.keys(schema).map((f) => deleteRawConfigValue(keyFn(f))));
 }
 
-async function storedSecretIfUnchanged(
-  indexKey: string,
-  keyFn: (id: string, field: string) => string,
-  schema: Record<string, any>,
-  secretField: string,
+type SecretRule = {
+  indexKey: string;
+  keyFn: (id: string, field: string) => string;
+  schema: Record<string, any>;
+  secretField: string;
+  matchFields: string[];
+};
+
+// A stored secret is only reused while the fields that decide where it is sent, and as whom,
+// still match the saved provider. Otherwise an admin could repoint a provider at a host they
+// control and collect a secret they cannot read.
+const SECRET_RULES: Record<"ldap" | "oidc" | "oauth", SecretRule> = {
+  ldap: { indexKey: LDAP_INDEX_KEY, keyFn: ldapKey, schema: LDAP_PROVIDER_SCHEMA, secretField: "password", matchFields: ["url", "bindDn"] },
+  oidc: { indexKey: OIDC_INDEX_KEY, keyFn: oidcKey, schema: OIDC_PROVIDER_SCHEMA, secretField: "secret", matchFields: ["url", "clientId"] },
+  oauth: {
+    indexKey: OAUTH_INDEX_KEY,
+    keyFn: oauthKey,
+    schema: OAUTH_PROVIDER_SCHEMA,
+    secretField: "secret",
+    matchFields: ["providerType", "baseUrl", "tokenUrl", "clientId"],
+  },
+};
+
+async function storedSecretState(
+  rule: SecretRule,
   submitted: Record<string, unknown>,
-  matchFields: string[],
-): Promise<string | undefined> {
+): Promise<{ secret: string | undefined; unchanged: boolean }> {
   const id = submitted.id;
-  if (typeof id !== "string" || !id) return undefined;
+  if (typeof id !== "string" || !id) return { secret: undefined, unchanged: false };
 
-  const ids = await getIndex(indexKey);
-  if (!ids.includes(id)) return undefined;
+  const ids = await getIndex(rule.indexKey);
+  if (!ids.includes(id)) return { secret: undefined, unchanged: false };
 
-  const stored = await loadProvider<Record<string, unknown>>((f) => keyFn(id, f), schema, id);
-  const unchanged = matchFields.every((f) => stored[f] === submitted[f]);
-  if (!unchanged) return undefined;
-  return getRawConfigValue(keyFn(id, secretField));
+  const stored = await loadProvider<Record<string, unknown>>((f) => rule.keyFn(id, f), rule.schema, id);
+  const unchanged = rule.matchFields.every((f) => stored[f] === submitted[f]);
+  return { secret: await getRawConfigValue(rule.keyFn(id, rule.secretField)), unchanged };
+}
+
+async function storedSecretIfUnchanged(rule: SecretRule, submitted: Record<string, unknown>) {
+  const { secret, unchanged } = await storedSecretState(rule, submitted);
+  return unchanged ? secret : undefined;
 }
 
 /** The saved bind password, only while the submitted url and bindDn still match the saved provider. */
 export function storedLDAPPassword(submitted: Record<string, unknown>): Promise<string | undefined> {
-  return storedSecretIfUnchanged(LDAP_INDEX_KEY, ldapKey, LDAP_PROVIDER_SCHEMA, "password", submitted, ["url", "bindDn"]);
+  return storedSecretIfUnchanged(SECRET_RULES.ldap, submitted);
 }
 
 /** The saved client secret, only while the submitted url and clientId still match the saved provider. */
 export function storedOIDCSecret(submitted: Record<string, unknown>): Promise<string | undefined> {
-  return storedSecretIfUnchanged(OIDC_INDEX_KEY, oidcKey, OIDC_PROVIDER_SCHEMA, "secret", submitted, ["url", "clientId"]);
+  return storedSecretIfUnchanged(SECRET_RULES.oidc, submitted);
+}
+
+/** Labels of submitted providers that would keep a stored secret although the fields it is bound to changed. */
+export async function providersNeedingSecretReentry(input: Partial<AuthConfig>): Promise<string[]> {
+  const labels: string[] = [];
+  for (const kind of ["ldap", "oidc", "oauth"] as const) {
+    const rule = SECRET_RULES[kind];
+    for (const submitted of (input[kind] ?? []) as Record<string, unknown>[]) {
+      if (submitted[rule.secretField]) continue;
+      const setFlag = rule.schema[rule.secretField].setFlag ?? `${rule.secretField}Set`;
+      if (submitted[setFlag] !== true) continue;
+      const { secret, unchanged } = await storedSecretState(rule, submitted);
+      if (!secret || unchanged) continue;
+      labels.push(String(submitted.label || submitted.id));
+    }
+  }
+  return labels;
 }
 
 export function hasEnabledProvider(cfg: Partial<AuthConfig>): boolean {
