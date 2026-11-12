@@ -5,7 +5,6 @@ import { Session, User, UserRole } from "../../db/models";
 
 const SESSION_COOKIE_NAME = "tirsession";
 const SESSION_EXPIRY_HOURS = 2;
-const SESSION_EXPIRY_SECONDS = SESSION_EXPIRY_HOURS * 60 * 60;
 const SESSION_EXTEND_THRESHOLD_HOURS = SESSION_EXPIRY_HOURS / 2;
 
 export class SessionService {
@@ -25,12 +24,13 @@ export class SessionService {
       loginTime: DateTime.now().toISO(),
     });
 
+    // A session cookie with no maxAge: the Session row is the only clock, so an
+    // extension written during server-side rendering needs no cookie to reach the browser.
     setCookie(event, SESSION_COOKIE_NAME, id, {
       httpOnly: true,
       path: "/",
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      maxAge: SESSION_EXPIRY_SECONDS,
     });
 
     return id;
@@ -55,13 +55,6 @@ export class SessionService {
     if (remaining < SESSION_EXTEND_THRESHOLD_HOURS) {
       const newExpiry = DateTime.now().plus({ hours: SESSION_EXPIRY_HOURS }).toISO();
       await session.update({ expiresAt: newExpiry, lastUpdate: DateTime.now().toISO() });
-      setCookie(event, SESSION_COOKIE_NAME, id, {
-        httpOnly: true,
-        path: "/",
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: SESSION_EXPIRY_SECONDS,
-      });
     }
 
     return session;
