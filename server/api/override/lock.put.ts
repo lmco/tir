@@ -33,14 +33,8 @@ export default defineEventHandler(async (event) => {
       id: systemId,
     },
   });
-
-  let failure = ""
-  if (!system) {
-    failure = "System not found."
-  }
   
   if (!body.type || !body.stigDatumId || !body.value) {
-    failure = "missing required fields."
     throw createError({
       statusCode: 400,
       statusMessage: `type, stigDatumId, and value are all required.`,
@@ -71,9 +65,5 @@ export default defineEventHandler(async (event) => {
     await lockResult.save();
   }
 
-  if (failure == "") {
-    return { success: true };
-  } else {
-    return {success: false, message: failure };
-  }
+  return { success: true };
 });
