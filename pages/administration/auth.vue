@@ -75,7 +75,7 @@
       </template>
 
       <dd class="flex justify-end pt-6">
-        <div class="relative inline-block text-left">
+        <div ref="providerMenu" class="relative inline-block text-left">
           <button
             type="button"
             class="inline-flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
@@ -134,6 +134,7 @@ definePageMeta({ layout: "admin" });
 const authConfig = ref<AuthConfig>();
 const providerSecrets = ref<Record<string, string>>({});
 const showProviderMenu = ref(false);
+const providerMenu = ref<HTMLElement | null>(null);
 const dirty = ref(false);
 const saving = ref(false);
 
@@ -199,7 +200,7 @@ async function loadAuthConfig() {
 }
 
 function closeProviderMenuOnOutsideClick(e: MouseEvent) {
-  if ((e.target as Element).closest(".relative")) return;
+  if (providerMenu.value?.contains(e.target as Node)) return;
   showProviderMenu.value = false;
 }
 
