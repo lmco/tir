@@ -1,4 +1,3 @@
-import { Op } from "sequelize";
 import { DateTime } from "luxon";
 import { User } from "../../db/models";
 import { SessionService } from "./sessionService";
@@ -39,13 +38,12 @@ export abstract class AuthProvider {
     userRoleId: number | null = null,
   ): Promise<{ sessionId: string; user: any }> {
     const { firstName, lastName } = profile;
-    const emails = Array.isArray(profile.email) ? profile.email.filter(Boolean) : [profile.email];
-    const primaryEmail = emails[0];
+    // Only the primary address links to an account: a secondary address equal to another
+    // user's email must not sign in as that user.
+    const email = (Array.isArray(profile.email) ? profile.email.find(Boolean) : profile.email) ?? "";
+    if (!email) throw new Error("The login profile has no email address.");
 
-    let user = await User.findOne({
-      where: emails.length > 1 ? { email: { [Op.in]: emails } } : { email: primaryEmail },
-    });
-    const email = user?.email ?? primaryEmail;
+    let user = await User.findOne({ where: { email } });
     if (!user) {
       const now = DateTime.now().toISO();
       user = await User.create({
