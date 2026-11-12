@@ -62,7 +62,7 @@
                   >Systems Affected
                 </DialogTitle>
                 <div class="mb-6 mt-2">
-                  <p class="text-sm text-gray-500">Edit our systems below.</p>
+                  <p class="text-sm text-gray-500">Edit your systems below.</p>
                 </div>
               </div>
 
@@ -147,6 +147,7 @@
 <script setup>
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from "@headlessui/vue";
 import { XMarkIcon, LockClosedIcon } from "@heroicons/vue/24/outline";
+import { useAlertsStore } from "~/stores/AlertsStore";
 
 // const { open, overrideClass, overrides } = defineProps({
 //   open: Boolean,
@@ -172,11 +173,15 @@ const props = defineProps({
   },
 });
 const { open, overrideClass, overrides } = toRefs(props);
+const alertsStore = useAlertsStore();
 
 const localOverrides = ref(overrides.value);
+let preserveModalEditsDuringParentRefresh = false;
 
 watch(overrides, (newVal) => {
-  localOverrides.value = newVal;
+  if (!preserveModalEditsDuringParentRefresh) {
+    localOverrides.value = newVal;
+  }
 });
 
 const selectAllFilter = ref(false);
@@ -276,10 +281,22 @@ function mapSeverity(severityLevel) {
     Critical: 4,
   };
 
-  return severityMap[severityLevel] || null;
+  return severityMap[severityLevel] ?? null;
 }
 
 async function saveOverrides() {
+  let failed = false;
+  const saveRequest = async (title, request) => {
+    try {
+      await request();
+      return true;
+    } catch (error) {
+      failed = true;
+      alertsStore.reportError(title, error);
+      return false;
+    }
+  };
+
   for (const system of localOverrides.value) {
     const body = {
       id: system.id,
@@ -290,17 +307,21 @@ async function saveOverrides() {
 
     if (overrideClass.value === "stig") {
       body.severityOverride = system.overrides.severityOverride;
-      await $fetch("/api/override/override", {
-        method: "POST",
-        body,
-      });
+      await saveRequest("Failed to save STIG override", () =>
+        $fetch("/api/override/override", {
+          method: "POST",
+          body,
+        }),
+      );
     }
     if (overrideClass.value === "nessus") {
       body.severityOverride = mapSeverity(system.overrides.severityOverride);
-      await $fetch("/api/vuln/override", {
-        method: "POST",
-        body,
-      });
+      await saveRequest("Failed to save Nessus override", () =>
+        $fetch("/api/vuln/override", {
+          method: "POST",
+          body,
+        }),
+      );
     }
 
     for (const lock of system.overrideLocks) {
@@ -312,46 +333,81 @@ async function saveOverrides() {
         };
         if (overrideClass.value === "stig") {
           body.stigDatumId = system.overrides.id;
-          await $fetch("/api/override/lock", {
-            method: "PUT",
-            body,
-          });
+          await saveRequest("Failed to save STIG override lock", () =>
+            $fetch("/api/override/lock", {
+              method: "PUT",
+              body,
+            }),
+          );
         }
         if (overrideClass.value === "nessus") {
           body.nessusReportItemId = system.id;
-          await $fetch("/api/vuln/lock", {
-            method: "PUT",
-            body,
-          });
+          await saveRequest("Failed to save Nessus override lock", () =>
+            $fetch("/api/vuln/lock", {
+              method: "PUT",
+              body,
+            }),
+          );
         }
       } else if (lock.id) {
         if (overrideClass.value === "nessus") {
-          await $fetch("/api/vuln/removeLock", {
-            method: "DELETE",
-            body: {
-              id: system.overrideLocks[0].id,
-              systemId: system.systemId,
-            },
-          });
+          const removed = await saveRequest("Failed to remove Nessus override lock", () =>
+            $fetch("/api/vuln/removeLock", {
+              method: "DELETE",
+              body: {
+                id: lock.id,
+                systemId: system.systemId,
+              },
+            }),
+          );
+          if (removed) lock.id = null;
         }
         if (overrideClass.value === "stig") {
-          await $fetch("/api/override/removeLock", {
-            method: "DELETE",
-            body: {
-              id: system.overrideLocks[0].id,
-              systemId: system.systemId,
-            },
+          let removalResult;
+          const removed = await saveRequest("Failed to remove STIG override lock", async () => {
+            removalResult = await $fetch("/api/override/removeLock", {
+              method: "DELETE",
+              body: {
+                systemId: system.systemId,
+                overrideType: lock.type,
+                stigDatumId: system.overrides.id,
+              },
+            });
           });
+          if (removed) {
+            lock.id = null;
+            if (removalResult.removed === 0) {
+              alertsStore.reportError(
+                "STIG override lock was already absent",
+                new Error("No matching lock row needed to be removed."),
+              );
+            }
+          }
         }
       }
     }
   }
-  if (overrideClass.value === "nessus") {
-    refreshNuxtData("VulnDataAPI");
+  if (failed) {
+    preserveModalEditsDuringParentRefresh = true;
+    try {
+      await refreshOverrideData();
+      await nextTick();
+    } finally {
+      preserveModalEditsDuringParentRefresh = false;
+    }
+    return false;
   }
-  if (overrideClass.value === "stig") {
-    refreshNuxtData("evaluationAPI");
-  }
+
+  await refreshOverrideData();
   emit("update:open", false);
+  return true;
+}
+
+async function refreshOverrideData() {
+  try {
+    await refreshNuxtData(overrideClass.value === "nessus" ? "VulnDataAPI" : "evaluationAPI");
+  } catch (error) {
+    alertsStore.reportError("Failed to refresh overrides", error);
+  }
 }
 </script>
