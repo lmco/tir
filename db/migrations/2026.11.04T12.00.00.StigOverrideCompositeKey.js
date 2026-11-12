@@ -21,26 +21,31 @@ const areForeignKeysNotNull = async (queryInterface, tableName, transaction) => 
   );
 };
 
-const duplicateIds = (table) => `
+const normalizedLastUpdate = (column, dialect) =>
+  dialect === "postgres"
+    ? `CAST(${column} AS TIMESTAMPTZ)`
+    : `julianday(${column})`;
+
+const duplicateIds = (table, dialect) => `
   SELECT id
   FROM (
     SELECT
       overrides.id,
       ROW_NUMBER() OVER (
         PARTITION BY overrides.type, overrides."SystemId", overrides."StigDatumId"
-        ORDER BY overrides."lastUpdate" DESC, overrides.id DESC
+        ORDER BY ${normalizedLastUpdate('overrides."lastUpdate"', dialect)} DESC, overrides.id DESC
       ) AS duplicate_rank
     FROM ${table} AS overrides
   ) ranked
   WHERE duplicate_rank > 1
 `;
 
-const rowsToArchive = (table) => `
+const rowsToArchive = (table, dialect) => `
   SELECT id
   FROM ${table}
   WHERE "SystemId" IS NULL OR "StigDatumId" IS NULL
   UNION
-  ${duplicateIds(table)}
+  ${duplicateIds(table, dialect)}
 `;
 
 const overrideColumns = `id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"`;
@@ -149,10 +154,16 @@ export const up = async ({ context: sequelize }) => {
         )
         SELECT id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"
         FROM ${table}
-        WHERE id IN (${rowsToArchive(table)})
+        WHERE id IN (${rowsToArchive(table, dialect)})
       `,
         { transaction: archiveTransaction },
       );
+
+      const [countRows] = await sequelize.query(
+        `SELECT COUNT(*) AS "archivedCount" FROM ${duplicateTable}`,
+        { transaction: archiveTransaction },
+      );
+      const archivedCount = Number(countRows[0]?.archivedCount ?? 0);
 
       await sequelize.query(
         `
@@ -163,6 +174,7 @@ export const up = async ({ context: sequelize }) => {
       );
 
       await archiveTransaction.commit();
+      //  Archived ${archivedCount} duplicate or incomplete row(s) from "StigOverrides". Inspect "${duplicateTableName}" for archived records.
     } catch (error) {
       await archiveTransaction.rollback();
       throw error;
