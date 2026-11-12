@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { Op } from "sequelize";
 import { TirConfig } from "~/db/models/tirConfig";
 
@@ -7,6 +8,17 @@ const composeKey = (section: string, baseKey: string) => `${section}${capitalize
 const serialize = (value: unknown): string =>
   typeof value === "string" ? value : JSON.stringify(value ?? null);
 
+// upsert skips the create and update hooks, so the timestamps are written here.
+async function writeConfig(key: string, value: unknown): Promise<void> {
+  const now = DateTime.now().toISO();
+  const row = await TirConfig.findOne({ where: { key } });
+  if (row) {
+    await row.update({ value: serialize(value), lastUpdate: now });
+    return;
+  }
+  await TirConfig.create({ key, value: serialize(value), lastUpdate: now, creationDate: now });
+}
+
 export async function setConfigValue(
   section: string,
   baseKey: string,
@@ -14,7 +26,7 @@ export async function setConfigValue(
 ): Promise<void> {
   if (value === undefined) return;
   const key = composeKey(section, baseKey);
-  await TirConfig.upsert({ key, value: serialize(value) });
+  await writeConfig(key, value);
 }
 
 export async function getConfigValue(
@@ -47,7 +59,7 @@ export async function getRawConfigValue(key: string): Promise<string | undefined
 
 export async function setRawConfigValue(key: string, value: unknown): Promise<void> {
   if (value === undefined) return;
-  await TirConfig.upsert({ key, value: serialize(value) });
+  await writeConfig(key, value);
 }
 
 export async function deleteRawConfigValue(key: string): Promise<void> {
