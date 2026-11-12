@@ -154,7 +154,7 @@ export default defineEventHandler(async (event) => {
       firstName = firstAttr(ldapUser.givenName, username);
       lastName = firstAttr(ldapUser.sn, "Unknown");
       const mails = allAttrs(ldapUser.mail).filter(Boolean);
-      email = mails.length ? mails[0] : `${username}@example.com`;
+      email = mails.length ? mails[0] : `${username}@${domainFromBaseDn(baseDn) || "example.com"}`;
     }
 
     return { ok: true, email, firstName, lastName, groups, userRoleId, denied };

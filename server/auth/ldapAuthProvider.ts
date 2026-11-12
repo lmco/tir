@@ -91,7 +91,7 @@ export class LDAPAuthProvider extends AuthProvider {
       const firstName = firstAttr(ldapUser.givenName, username);
       const lastName = firstAttr(ldapUser.sn, "Unknown");
       const mails = allAttrs(ldapUser.mail).filter(Boolean);
-      const email = mails.length ? mails : [`${username}@example.com`];
+      const email = mails.length ? mails : [`${username}@${domainFromBaseDn(baseDn) || "example.com"}`];
 
       const groups = allAttrs(ldapUser[groupAttr]).map((g) => g.toLowerCase());
       const userRoleId = this.resolveGroupRole(groups);
