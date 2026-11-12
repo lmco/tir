@@ -217,7 +217,7 @@ export class OAuthAuthProvider extends AuthProvider {
     const api = KNOWN_PROVIDERS.github.apiBase("");
     const res = await fetch(`${api}/user/teams?per_page=100`, { headers: githubHeaders(token) });
     if (!res.ok) {
-      logger.warn({ service: "auth", message: `Could not fetch GitHub teams for ${email}: ${res.status}` });
+      logger.warning({ service: "auth", message: `Could not fetch GitHub teams for ${email}: ${res.status}` });
       throw new H3Error("Unauthorized: Could not verify GitHub team membership.");
     }
     const teams: any[] = await res.json();
@@ -245,7 +245,7 @@ export class OAuthAuthProvider extends AuthProvider {
       headers: bearerHeaders(token),
     });
     if (!res.ok) {
-      logger.warn({ service: "auth", message: `Could not fetch GitLab groups for ${email}: ${res.status}` });
+      logger.warning({ service: "auth", message: `Could not fetch GitLab groups for ${email}: ${res.status}` });
       throw new H3Error("Unauthorized: Could not verify GitLab group membership.");
     }
     const groups: any[] = await res.json();
@@ -274,7 +274,7 @@ export class OAuthAuthProvider extends AuthProvider {
       headers: bearerHeaders(token),
     });
     if (!res.ok) {
-      logger.warn({ service: "auth", message: `Could not fetch Bitbucket workspaces for ${email}: ${res.status}` });
+      logger.warning({ service: "auth", message: `Could not fetch Bitbucket workspaces for ${email}: ${res.status}` });
       throw new H3Error("Unauthorized: Could not verify Bitbucket workspace membership.");
     }
     const data = await res.json();
