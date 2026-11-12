@@ -74,7 +74,6 @@ function isValidDefaultLoginProvider(value: unknown): boolean {
   return typeof value === "string" && value.startsWith("ldap:") && PROVIDER_ID_PATTERN.test(value.slice(5));
 }
 
-/** Returns only the fields the schemas know, with their types checked, or throws AuthConfigValidationError. */
 export function validateAuthConfigInput(body: unknown): Partial<AuthConfig> {
   if (!isRecord(body)) fail("Request body must be an object.");
   const out: Record<string, unknown> = {};
