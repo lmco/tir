@@ -83,8 +83,19 @@ export default defineEventHandler(async (event) => {
       const ext = path.extname(fileName).toLowerCase();
 
       const relativePath = relativePaths[i] ?? fileName;
-      const safeRelativepath = relativePath.replace(/^[/\\]+/, "");
-      const savedPath = path.join(uploadsDir, safeRelativepath);
+      if (
+        typeof relativePath !== "string" ||
+        path.isAbsolute(relativePath) ||
+        path.win32.isAbsolute(relativePath) ||
+        relativePath.split(/[\\/]/).includes("..")
+      ) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "Invalid upload path.",
+        });
+      }
+
+      const savedPath = safeJoin(uploadsDir, relativePath.replace(/\\/g, "/"));
 
       fs.mkdirSync(path.dirname(savedPath), { recursive: true });
       fs.renameSync(uploadedFile.filepath, savedPath);
