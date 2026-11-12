@@ -1,6 +1,6 @@
 import { Op } from "sequelize";
-import { SessionService } from "./sessionService";
 import { User } from "../../db/models";
+import { SessionService } from "./sessionService";
 import type { AuthEvent } from "~/types/auth";
 
 export interface TestLoginResult {

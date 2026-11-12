@@ -1,5 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { assertEmailVerified } from "../../../server/auth/authProvider";
+import { GroupClaimExtractor } from "../../../server/auth/groupClaimExtractor";
+
 vi.mock("../../../db/models", () => ({
   User: { findOne: vi.fn(), create: vi.fn() },
   Session: { create: vi.fn(), destroy: vi.fn(), findOne: vi.fn() },
@@ -16,9 +19,6 @@ vi.mock("../../../server/utils/logger", () => ({
     alert: vi.fn(),
   },
 }));
-
-import { assertEmailVerified } from "../../../server/auth/authProvider";
-import { GroupClaimExtractor } from "../../../server/auth/groupClaimExtractor";
 
 describe("assertEmailVerified", () => {
   test("allows claims when required is false", () => {
