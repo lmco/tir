@@ -185,7 +185,7 @@ const notificationStore = useNotificationStore();
 
 function reportError(error: unknown, fallback: string) {
   const err = error as { data?: { statusMessage?: string; message?: string }; statusMessage?: string };
-  const message = err?.data?.statusMessage ?? err?.data?.message ?? err?.statusMessage ?? fallback;
+  const message = err?.data?.message || err?.data?.statusMessage || err?.statusMessage || fallback;
   notificationStore.addNotification({ type: "error", message });
 }
 
