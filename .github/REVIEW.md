@@ -19,6 +19,18 @@ Give each finding a severity:
 
 If there is nothing worth saying, say so in one line.
 
+To decline or defer a finding, post a top-level comment on the pull request
+with the reason. The reviewer reads those comments on its next run, does not
+raise the finding again, and lists it in a closing section so human reviewers
+still see it. Write "declined" when the finding will not be acted on and
+"deferred" when it moves to another issue or pull request, and name that issue
+or pull request. Only comments from people with write access to the
+repository are read, and bot comments are ignored. Inline review threads and
+review summaries are not read.
+To take a decline back, edit or delete the comment, since hiding it changes
+nothing. Comments are read newest first, and reading stops at the first one
+that would take the total past 8000 characters.
+
 ## Repository conventions
 
 - Guard clauses and early returns over nested if/else.
