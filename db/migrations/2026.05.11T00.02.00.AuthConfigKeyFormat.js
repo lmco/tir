@@ -93,6 +93,12 @@ export const up = async ({ context: sequelize }) => {
       await insertIfAbsent(sequelize, "auth:ldap:openldap-1:sslCa",         "",               now, migration);
     }
 
+    // Before this migration an absent authLocalEnable meant local login was off whenever
+    // another provider was configured. Keep that, since the schema default is now on.
+    if (oidcCheck.length > 0 || ldapCheck.length > 0) {
+      await insertIfAbsent(sequelize, "auth:local:enable", "false", now, migration);
+    }
+
     await insertIfAbsent(sequelize, "auth:defaultLoginProvider", "local", now, migration);
 
     await migration.commit();
@@ -134,22 +140,10 @@ export const down = async ({ context: sequelize }) => {
       for (const [oldKey, newKey] of oidcRenames) {
         await renameKey(sequelize, oldKey, newKey, now, migration);
       }
-      
-      await sequelize.query(
-        `DELETE FROM "TirConfigs" WHERE key IN (:keys)`,
-        {
-          replacements: {
-            keys: [
-              `auth:oidc:${first}:label`,
-              `auth:oidc:${first}:groupClaimType`,
-              `auth:oidc:${first}:groupClaimPath`,
-            ],
-          },
-          transaction: migration,
-        },
-      );
 
-      for (const id of oidcIds.slice(1)) {
+      // Whatever is left under the prefix has no flat equivalent, including keys the
+      // new UI saved after the upgrade, so none of it may survive a rollback.
+      for (const id of oidcIds) {
         await deleteAllForProvider(sequelize, `auth:oidc:${id}`, migration);
       }
     }
@@ -171,24 +165,8 @@ export const down = async ({ context: sequelize }) => {
       for (const [oldKey, newKey] of ldapRenames) {
         await renameKey(sequelize, oldKey, newKey, now, migration);
       }
-      
-      await sequelize.query(
-        `DELETE FROM "TirConfigs" WHERE key IN (:keys)`,
-        {
-          replacements: {
-            keys: [
-              `auth:ldap:${first}:label`,
-              `auth:ldap:${first}:template`,
-              `auth:ldap:${first}:ssl`,
-              `auth:ldap:${first}:sslInsecure`,
-              `auth:ldap:${first}:sslCa`,
-            ],
-          },
-          transaction: migration,
-        },
-      );
 
-      for (const id of ldapIds.slice(1)) {
+      for (const id of ldapIds) {
         await deleteAllForProvider(sequelize, `auth:ldap:${id}`, migration);
       }
     }
