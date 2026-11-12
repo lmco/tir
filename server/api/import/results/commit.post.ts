@@ -4,6 +4,7 @@ import { parseXml, XMLDocument } from "libxmljs";
 import { importChecklist, importChecklistV3 } from "../../../utils/checklist";
 import { ChecklistV3 } from "../../../utils/checklist_v3";
 import { importXccdf } from "../../../utils/xccdf";
+import { System } from "../../../../db/models";
 import { importNessus } from "~/server/utils/nessus";
 
 export default defineEventHandler(async (event) => {
@@ -14,6 +15,15 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: "Missing analysisId.",
+    });
+  }
+  if (
+    typeof analysisId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(analysisId)
+  ) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid analysisId.",
     });
   }
 
@@ -46,12 +56,36 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Reviewers are unable to edit Boundaries",
     });
   }
+  const boundarySystems = await System.findAll({
+    where: { BoundaryId: analysis.boundaryId },
+    attributes: ["id"],
+  });
+
+  const validSystemIds = new Set(boundarySystems.map((system) => system.id));
+
+  if (!Array.isArray(receivedAssignments)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid assignments.",
+    });
+  }
+
+  const invalidAssignment = [...receivedAssignments, ...autoMatched].some(
+    ({ systemId }) => !validSystemIds.has(Number(systemId)),
+  );
+
+  if (invalidAssignment) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "System does not belong to this Boundary.",
+    });
+  }
   for (const file of analyzableFiles) {
     const fileData = fs.readFileSync(file.path, "utf8");
     const assignment = receivedAssignments.find((a: any) => a.fileName === file.originalName);
     const autoMatch = autoMatched.find((a: any) => a.fileName === file.originalName);
 
-    const systemId = assignment?.systemId ?? autoMatch?.systemId;
+    const systemId = Number(assignment?.systemId ?? autoMatch?.systemId);
 
     if (file.ext === ".ckl") {
       if (!systemId) continue;
@@ -68,7 +102,7 @@ export default defineEventHandler(async (event) => {
       const autoMatches = autoMatched
         .filter((match: any) => match.type === "nessus" && match.fileName === file.originalName)
         .map((match: any) => ({
-          SystemId: match.systemId,
+          SystemId: Number(match.systemId),
           NessusHostName: match.hostName,
         }));
 
@@ -78,7 +112,7 @@ export default defineEventHandler(async (event) => {
             assignment.type === "nessus" && assignment.fileName === file.originalName,
         )
         .map((assignment: any) => ({
-          SystemId: assignment.systemId,
+          SystemId: Number(assignment.systemId),
           NessusHostName: assignment.hostName,
         }));
 
@@ -89,13 +123,7 @@ export default defineEventHandler(async (event) => {
     }
 
     if (file.ext === ".xml") {
-      const assignment = receivedAssignments.find((a: any) => a.fileName === file.originalName);
-
-      const systemId = assignment?.systemId;
-
-      if (!systemId) {
-        continue;
-      }
+      if (!assignment?.systemId) continue;
       if (verifyXccdf(fileData)) {
         await importXccdf(fileData, systemId);
       }
