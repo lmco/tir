@@ -36,7 +36,7 @@ export const KNOWN_PROVIDERS: Record<
     token: (base) => `${base || "https://gitlab.com"}/oauth/token`,
     apiBase: (base) => `${base || "https://gitlab.com"}/api/v4`,
     health: (base) => `${base || "https://gitlab.com"}/api/v4/version`,
-    scope: "read_user api",
+    scope: "read_user read_api",
   },
   bitbucket: {
     authorize: () => "https://bitbucket.org/site/oauth2/authorize",
