@@ -47,6 +47,7 @@ export abstract class AuthProvider {
     });
     const email = user?.email ?? primaryEmail;
     if (!user) {
+      const now = DateTime.now().toISO();
       user = await User.create({
         firstName,
         lastName,
@@ -54,6 +55,8 @@ export abstract class AuthProvider {
         UserRoleId: userRoleId ?? 2,
         TimezoneId: 1,
         creationMethod: authMethod,
+        creationDate: now,
+        lastUpdate: now,
       });
       logger.info({ service: "auth", message: `Created new local user for ${authMethod} login: ${email}` });
     }
