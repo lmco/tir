@@ -1,7 +1,6 @@
 <template>
   <div>
     <dl class="mb-6 space-y-6 divide-y divide-gray-100 border-t border-gray-200 pb-6 pt-6 text-sm leading-6">
-      <!-- Default Login Tab -->
       <dd
         v-if="authConfig"
         class="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto"
@@ -46,13 +45,11 @@
         </div>
       </dd>
 
-      <!-- Local Auth -->
       <AuthLocalProvider
         v-if="authConfig"
         v-model:local="authConfig.local"
       />
 
-      <!-- Dynamic provider sections -->
       <template v-if="authConfig">
         <AuthLDAPProvider
           v-for="(provider, idx) in authConfig.ldap"
@@ -77,7 +74,6 @@
         />
       </template>
 
-      <!-- Add Provider button -->
       <dd class="flex justify-end pt-6">
         <div class="relative inline-block text-left">
           <button
@@ -131,6 +127,7 @@
 
 <script setup lang="ts">
 import type { AuthConfig } from "~/types/auth";
+import { useNotificationStore } from "~/stores/NotificationStore";
 
 definePageMeta({ layout: "admin" });
 
@@ -183,16 +180,36 @@ watch(
   { deep: true },
 );
 
-onMounted(async () => {
-  authConfig.value = await $fetch<AuthConfig>("/api/config/authLoad");
-  normalizeDefaultProvider();
-  takeSnapshot();
+const notificationStore = useNotificationStore();
 
-  document.addEventListener("click", (e) => {
-    if (!(e.target as Element).closest(".relative")) {
-      showProviderMenu.value = false;
-    }
-  });
+function reportError(error: unknown, fallback: string) {
+  const err = error as { data?: { statusMessage?: string; message?: string }; statusMessage?: string };
+  const message = err?.data?.statusMessage ?? err?.data?.message ?? err?.statusMessage ?? fallback;
+  notificationStore.addNotification({ type: "error", message });
+}
+
+async function loadAuthConfig() {
+  try {
+    authConfig.value = await $fetch<AuthConfig>("/api/config/authLoad");
+    normalizeDefaultProvider();
+    takeSnapshot();
+  } catch (error) {
+    reportError(error, "Could not load the authentication configuration.");
+  }
+}
+
+function closeProviderMenuOnOutsideClick(e: MouseEvent) {
+  if ((e.target as Element).closest(".relative")) return;
+  showProviderMenu.value = false;
+}
+
+onMounted(async () => {
+  await loadAuthConfig();
+  document.addEventListener("click", closeProviderMenuOnOutsideClick);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", closeProviderMenuOnOutsideClick);
 });
 
 // Ids removed in this session are never handed out again, so a replacement
@@ -323,16 +340,15 @@ async function saveAuthConfig() {
       })),
     };
     await $fetch("/api/config/authSave", { method: "POST", body });
-    authConfig.value = await $fetch<AuthConfig>("/api/config/authLoad");
-    takeSnapshot();
+    await loadAuthConfig();
+  } catch (error) {
+    reportError(error, "Could not save the authentication configuration.");
   } finally {
     saving.value = false;
   }
 }
 
 async function discardChanges() {
-  authConfig.value = await $fetch<AuthConfig>("/api/config/authLoad");
-  normalizeDefaultProvider();
-  takeSnapshot();
+  await loadAuthConfig();
 }
 </script>
