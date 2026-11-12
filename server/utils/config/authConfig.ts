@@ -52,11 +52,12 @@ async function loadLocalConfig(): Promise<LocalAuthConfig> {
   return out as LocalAuthConfig;
 }
 
-async function saveLocalConfig(input: LocalAuthConfig): Promise<void> {
+async function saveLocalConfig(input: Partial<LocalAuthConfig>): Promise<void> {
   await Promise.all(
-    Object.entries(input).map(([field, value]) =>
-      value === undefined ? Promise.resolve() : setRawConfigValue(localKey(field), value),
-    ),
+    Object.keys(LOCAL_SCHEMA).map((field) => {
+      const value = input[field as keyof LocalAuthConfig];
+      return value === undefined ? Promise.resolve() : setRawConfigValue(localKey(field), value);
+    }),
   );
 }
 

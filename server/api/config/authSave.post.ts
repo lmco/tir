@@ -3,21 +3,32 @@ import {
   loadAuthConfig,
   hasEnabledProvider,
 } from "~/server/utils/config/authConfig";
+import {
+  validateAuthConfigInput,
+  AuthConfigValidationError,
+} from "~/server/utils/config/validateAuthConfig";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event);
 
-  const body = await readBody(event);
+  let input;
+  try {
+    input = validateAuthConfigInput(await readBody(event));
+  } catch (error) {
+    if (!(error instanceof AuthConfigValidationError)) throw error;
+    throw createError({ statusCode: 400, message: error.message });
+  }
+
   const current = await loadAuthConfig();
-  if (!hasEnabledProvider({ ...current, ...body })) {
+  if (!hasEnabledProvider({ ...current, ...input })) {
     throw createError({
       statusCode: 400,
       message: "At least one authentication provider must be enabled.",
     });
   }
 
-  await saveAuthConfig(body);
+  await saveAuthConfig(input);
 
   const newConfig = await loadAuthConfig();
 
