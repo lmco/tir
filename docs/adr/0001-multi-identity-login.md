@@ -1,8 +1,7 @@
 ---
-status: proposed
-date: 2026-06-03
+status: accepted
+date: 2026-06-11
 decision-makers: Mark Rivera, Amndeep Singh Mann
-consulted: Aaron Lippold
 ---
 
 # Users authenticate through Identities, not a single email key
@@ -18,8 +17,9 @@ different emails, each provider lands on (or creates) a separate User, and there
 is no way to tell TIR those accounts are the same person. So a person cannot
 deliberately link identities that do not share an email, and the separate
 accounts that result cannot be merged. MITRE raised multi-identity logins and
-account-merge as a nice-to-have (see #171, #170, and the PR #183 review). How
-should a User relate to the credentials they log in with?
+account-merge as a nice-to-have (see #171, #170, and the PR #183 review), and
+the design was worked through in discussion #197. How should a User relate to
+the credentials they log in with?
 
 ## Decision Drivers
 
@@ -53,6 +53,25 @@ onto a one-to-many Identity table. Login resolves
 `User.findOne({ where: { email } })`. The User keeps a single `primaryEmail` for
 display and notifications.
 
+Phase 1 lands as one change: a single migration introduces Identity and moves
+the external keys and credentials onto it, and all four providers switch to it
+together, rather than slicing provider by provider, so the schema changes once.
+
+Linking is explicit and user-initiated. An SSO identity TIR does not recognise
+is never attached to a User because its email matches one. The user is told the
+login is not recognised and asked to sign in with an existing TIR credential;
+once they do, the new Identity is attached to that User. With no existing
+account and self-registration off, the login is rejected. Where a provider has
+group mappings, the first login may instead offer the choice between creating
+a new account and attaching an existing one. Proving ownership by a
+confirmation email is an acceptable alternative proof.
+
+Provider claims are authoritative and re-synced on every login, not only when
+the account is created: the Identity's metadata (name) and the mapped global
+role are re-applied each time, and the group memberships the provider reports
+are stored on the Identity so that claim-driven node membership can build on
+them later.
+
 ### Consequences
 
 - Good, because account-merge (ADR 0002) becomes possible and one person can log
@@ -62,15 +81,25 @@ display and notifications.
   separate `password` and `salt` columns.
 - Bad, because all four providers must be rewired to resolve via Identity; this
   is a prerequisite phase (Phase 1) before user-merge.
+- Bad, because a role granted inside TIR to an SSO user is undone at their next
+  login if the provider's claims do not grant it; the provider is the place to
+  change it.
 - Neutral, because the password scheme is unchanged when the credential moves
   onto Identity: still PBKDF2-HMAC-SHA256 (600k iterations) with a per-user salt
   and a `SECRET_KEY` pepper; only its storage location and encoding change.
+  PBKDF2 stays the default because TIR must remain FIPS-capable. The PHC field
+  names its algorithm, so a scheme such as Argon2id can be offered later as a
+  selectable option for deployments that do not require FIPS, hard-gated to
+  PBKDF2 when a FIPS flag is set.
 
 ### Confirmation
 
 All four `server/auth/*AuthProvider.ts` resolve login through Identity with no
 remaining `User.findOne({ where: { email } })` login path; local password
-verifies against the PHC field stored on the Identity.
+verifies against the PHC field stored on the Identity. An unknown SSO identity
+is attached to a User only after an existing credential of that User is
+presented. A login whose claims map a different global role changes the User's
+role.
 
 ## Pros and Cons of the Options
 
@@ -90,5 +119,15 @@ verifies against the PHC field stored on the Identity.
 
 ## More Information
 
-Phase 1 of a two-phase effort; Phase 2 is the merge (ADR 0002). Related: #171
-(multiple SSO methods at once), #170 (local registration), PR #183.
+Phase 1 of a two-phase effort; Phase 2 is the merge (ADR 0002). Decided in
+discussion #197. Related: #171 (multiple SSO methods at once), #170 (local
+registration), PR #183. Until this lands, lmco/tir ADR 0003 holds an interim
+rule of one sign-in method per account.
+
+Still open from #197:
+
+- When a User's identities map to different global roles, whether the least
+  privileged of them applies.
+- What happens to a member's boundary memberships when a re-sync promotes them
+  to Admin: strip the membership rows, or keep them and block boundary data
+  access while the account is an Admin.

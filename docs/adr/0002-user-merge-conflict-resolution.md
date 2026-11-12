@@ -2,7 +2,6 @@
 status: proposed
 date: 2026-06-03
 decision-makers: Mark Rivera, Amndeep Singh Mann
-consulted: Aaron Lippold
 ---
 
 # User-merge folds a source User into a non-Admin target, target-wins on conflicts
@@ -13,6 +12,13 @@ Once a User can hold multiple Identities (ADR 0001), an Admin can merge two User
 that are the same person. Merging raises conflicts across global Role, Member
 roles on shared nodes, preferences, tokens and sessions, and assignments. How
 should those conflicts resolve?
+
+Merge is distinct from link. A link attaches a new, empty Identity to one
+existing User; it carries no memberships or data, only "this subject is also
+this person", and ADR 0001 covers it. A merge collapses two already populated
+Users, each with roles, memberships and preferences that can conflict, and
+that is what this ADR decides. Metadata that differs between a person's
+providers stays on the respective Identity rows and is not merged.
 
 ## Decision Drivers
 
@@ -90,4 +96,9 @@ audit-logged at `notice`.
 
 Requires the multi-identity model (ADR 0001). Depends on the Admin-is-not-a-Member
 invariant holding, enforced by separate work. Acceptance criteria for the
-user-merge feature issue derive from this ADR.
+user-merge feature issue derive from this ADR. Discussed in #197.
+
+Still open from #197 and relevant here: what a re-sync does with a member's
+boundary memberships when it promotes them to Admin (strip the rows, or keep
+them and block boundary data access). The answer decides whether a merge can
+ever leave membership rows on an Admin.
