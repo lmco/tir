@@ -54,7 +54,7 @@ export class SessionService {
     const remaining = DateTime.fromISO(session.expiresAt).diff(DateTime.now(), "hours").hours;
     if (remaining < SESSION_EXTEND_THRESHOLD_HOURS) {
       const newExpiry = DateTime.now().plus({ hours: SESSION_EXPIRY_HOURS }).toISO();
-      await session.update({ expiresAt: newExpiry });
+      await session.update({ expiresAt: newExpiry, lastUpdate: DateTime.now().toISO() });
       setCookie(event, SESSION_COOKIE_NAME, id, {
         httpOnly: true,
         path: "/",

@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import { DateTime } from "luxon";
 import { User } from "../../db/models";
 import { SessionService } from "./sessionService";
 import type { AuthEvent } from "~/types/auth";
@@ -59,6 +60,7 @@ export abstract class AuthProvider {
 
     if (userRoleId && user.UserRoleId !== userRoleId) {
       user.UserRoleId = userRoleId;
+      user.lastUpdate = DateTime.now().toISO();
       await user.save();
       logger.info({ service: "auth", message: `User role updated for ${email} to RoleId ${userRoleId}` });
     }
