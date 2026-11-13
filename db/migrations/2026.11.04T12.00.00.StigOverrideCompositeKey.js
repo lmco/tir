@@ -132,16 +132,10 @@ export const up = async ({ context: sequelize }) => {
           SystemId: {
             type: DataTypes.INTEGER,
             allowNull: true,
-            references: { model: "Systems", key: "id" },
-            onUpdate: "CASCADE",
-            onDelete: "CASCADE",
           },
           StigDatumId: {
             type: DataTypes.INTEGER,
             allowNull: true,
-            references: { model: "StigData", key: "id" },
-            onUpdate: "CASCADE",
-            onDelete: "CASCADE",
           },
         },
         { transaction: archiveTransaction },
@@ -159,6 +153,12 @@ export const up = async ({ context: sequelize }) => {
         { transaction: archiveTransaction },
       );
 
+      const [countRows] = await sequelize.query(
+        `SELECT COUNT(*) AS "archivedCount" FROM ${duplicateTable}`,
+        { transaction: archiveTransaction },
+      );
+      const archivedCount = Number(countRows[0]?.archivedCount ?? 0);
+
       await sequelize.query(
         `
         DELETE FROM ${table}
@@ -168,6 +168,10 @@ export const up = async ({ context: sequelize }) => {
       );
 
       await archiveTransaction.commit();
+
+      console.log(
+        `[StigOverrideCompositeKey] Archived ${archivedCount} duplicate or incomplete row(s) from "StigOverrides". Inspect "${duplicateTableName}" for archived records.`,
+      );
     } catch (error) {
       await archiveTransaction.rollback();
       throw error;
@@ -241,6 +245,8 @@ export const down = async ({ context: sequelize }) => {
   const schemaPrefix = dialect === "postgres" ? "public." : "";
   const table = `${schemaPrefix}"StigOverrides"`;
   const duplicateTable = `${schemaPrefix}"${duplicateTableName}"`;
+  const systemsTable = `${schemaPrefix}"Systems"`;
+  const stigDataTable = `${schemaPrefix}"StigData"`;
   const queryInterface = sequelize.getQueryInterface();
 
   const archiveExists = await hasTable(queryInterface, duplicateTableName);
@@ -317,10 +323,36 @@ export const down = async ({ context: sequelize }) => {
   if (archiveExists) {
     const restoreTransaction = await sequelize.transaction();
     try {
+      const [skippedRows] = await sequelize.query(
+        `
+        SELECT COUNT(*) AS "skippedCount"
+        FROM ${duplicateTable} AS archive
+        WHERE (
+          archive."SystemId" IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM ${systemsTable} AS s WHERE s.id = archive."SystemId")
+        )
+        OR (
+          archive."StigDatumId" IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM ${stigDataTable} AS sd WHERE sd.id = archive."StigDatumId")
+        )
+      `,
+        { transaction: restoreTransaction },
+      );
+      const skippedCount = Number(skippedRows[0]?.skippedCount ?? 0);
+
       await sequelize.query(
         `
         INSERT INTO ${table} (${overrideColumns})
-        SELECT ${overrideColumns} FROM ${duplicateTable}
+        SELECT ${overrideColumns}
+        FROM ${duplicateTable} AS archive
+        WHERE (
+          archive."SystemId" IS NULL
+          OR EXISTS (SELECT 1 FROM ${systemsTable} AS s WHERE s.id = archive."SystemId")
+        )
+        AND (
+          archive."StigDatumId" IS NULL
+          OR EXISTS (SELECT 1 FROM ${stigDataTable} AS sd WHERE sd.id = archive."StigDatumId")
+        )
       `,
         { transaction: restoreTransaction },
       );
@@ -332,6 +364,12 @@ export const down = async ({ context: sequelize }) => {
 
       await queryInterface.dropTable(duplicateTableName, { transaction: restoreTransaction });
       await restoreTransaction.commit();
+
+      if (skippedCount > 0) {
+        console.log(
+          `[StigOverrideCompositeKey] Skipped restoring ${skippedCount} archived row(s) from "${duplicateTableName}" because their referenced SystemId or StigDatumId no longer exists.`,
+        );
+      }
     } catch (error) {
       await restoreTransaction.rollback();
       throw error;
