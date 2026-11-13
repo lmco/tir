@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
   var CachedStig_StigData: { [id: number]: number[] } = {};
   var SystemAssessmentStigs: { [id: number]: number[] } = {};
   var SucceededStigs = [];
-  var SystemLookupTable: { [id: number]: number } = {};
+  var SystemLookupTable: { [id: number]: { key: number; value: number } } = {};
 
   // Order of operations
   // 1. Iterate Files
@@ -423,17 +423,7 @@ export default defineEventHandler(async (event) => {
                   stigLookupValue = StigLookupTable[assessment.StigId];
                 }
 
-                let systemLookupValue = -1;
-                
-                if (assessment.SystemId in SystemLookupTable) {
-                  systemLookupValue = SystemLookupTable[assessment.SystemId];
-                }
-                if (systemLookupValue == -1) {
-                  throw createError({
-                    statusCode: 400,
-                    statusMessage: `Boundary import failed: assessment system ${assessment.SystemId} was not imported.`,
-                  });
-                }
+                const systemLookupValue = SystemLookupTable[assessment.SystemId]!;
 
                 const newAssessment = await createBlankAssessment(
                   systemLookupValue.value,

@@ -5,10 +5,10 @@ import { StigOverride } from "~/db/models/stigOverride";
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
 
-  if (!body.systemId) {
+  if (!body.systemId || !body.type || !body.stigDatumId || !body.value) {
     throw createError({
       statusCode: 400,
-      statusMessage: `systemId required.`,
+      statusMessage: `systemId, type, stigDatumId, and value are all required.`,
     });
   }
 
@@ -28,18 +28,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const system = await System.findOne({
-    where: {
-      id: systemId,
-    },
-  });
   
-  if (!body.type || !body.stigDatumId || !body.value) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: `type, stigDatumId, and value are all required.`,
-    });
-  }
   const overrideType = body.type;
   const stigDatumId = body.stigDatumId;
   const overrideValue = body.value;
@@ -49,7 +38,7 @@ export default defineEventHandler(async (event) => {
     where: {
       type: overrideType,
       StigDatumId: stigDatumId,
-      SystemId: system?.id,
+      SystemId: systemId,
     },
     defaults: {
       type: overrideType, // typescriddpt doesn't understand type from where would be used
