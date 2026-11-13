@@ -159,12 +159,6 @@ export const up = async ({ context: sequelize }) => {
         { transaction: archiveTransaction },
       );
 
-      const [countRows] = await sequelize.query(
-        `SELECT COUNT(*) AS "archivedCount" FROM ${duplicateTable}`,
-        { transaction: archiveTransaction },
-      );
-      const archivedCount = Number(countRows[0]?.archivedCount ?? 0);
-
       await sequelize.query(
         `
         DELETE FROM ${table}
@@ -174,7 +168,6 @@ export const up = async ({ context: sequelize }) => {
       );
 
       await archiveTransaction.commit();
-      //  Archived ${archivedCount} duplicate or incomplete row(s) from "StigOverrides". Inspect "${duplicateTableName}" for archived records.
     } catch (error) {
       await archiveTransaction.rollback();
       throw error;
