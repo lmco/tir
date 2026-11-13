@@ -23,8 +23,8 @@ const areForeignKeysNotNull = async (queryInterface, tableName, transaction) => 
 
 const normalizedLastUpdate = (column, dialect) =>
   dialect === "postgres"
-    ? `CAST(${column} AS TIMESTAMPTZ)`
-    : `julianday(${column})`;
+    ? `CAST(NULLIF(${column}, '') AS TIMESTAMPTZ)`
+    : `julianday(NULLIF(${column}, ''))`;
 
 const duplicateIds = (table, dialect) => `
   SELECT id
@@ -33,7 +33,7 @@ const duplicateIds = (table, dialect) => `
       overrides.id,
       ROW_NUMBER() OVER (
         PARTITION BY overrides.type, overrides."SystemId", overrides."StigDatumId"
-        ORDER BY ${normalizedLastUpdate('overrides."lastUpdate"', dialect)} DESC, overrides.id DESC
+        ORDER BY ${normalizedLastUpdate('overrides."lastUpdate"', dialect)} DESC NULLS LAST, overrides.id DESC
       ) AS duplicate_rank
     FROM ${table} AS overrides
   ) ranked
