@@ -1,66 +1,56 @@
-import { Boundary_User, BoundaryRole, System, UserRole } from "~/db/models";
-import { Boundary } from "~/db/models/boundary";
+import { DateTime } from "luxon";
+import { System } from "~/db/models";
 import { StigOverride } from "~/db/models/stigOverride";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const systemId = body.systemId;
 
-  const rawToken = getCookie(event, "tirtoken");
-  let userId: number;
-
-  userId = 1;
-
-  if (!systemId) {
-    throw createError({
-      statusCode: 399,
-      statusMessage: `SystemId required.`,
-    });
-  }
-
-  const system = await System.findOne({
-    include: {
-      model: Boundary,
-      include: [
-        {
-          model: Boundary_User,
-          include: [{ model: BoundaryRole }],
-        },
-      ],
-    },
-    where: {
-      id: systemId,
-    },
-  });
-
-  if (!system) {
+  if (!body.systemId || !body.type || !body.stigDatumId || !body.value) {
     throw createError({
       statusCode: 400,
-      statusMessage: `Unable to find System`,
+      statusMessage: `systemId, type, stigDatumId, and value are all required.`,
     });
   }
-  const boundaryUser = system?.Boundary?.Boundary_User?.find(
-    (boundaryUser) => boundaryUser.id === userId,
-  );
 
-  if (boundaryUser) {
-    console.log("foundUser");
+  const systemId = body.systemId;
+  const checkResult = await userCheck(event, systemId, undefined, undefined);
+
+  if (!checkResult.BoundaryRoleId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Not a member of the Boundary",
+    });
   }
+  if (checkResult.BoundaryRoleId === 4) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Reviewers are unable to set override locks",
+    });
+  }
+
+  
+  const overrideType = body.type;
+  const stigDatumId = body.stigDatumId;
+  const overrideValue = body.value;
+
 
   const [lockResult, newLock] = await StigOverride.findOrCreate({
     where: {
-      type: body.type,
-      StigDatumId: body.stigDatumId,
-      SystemId: system?.id,
+      type: overrideType,
+      StigDatumId: stigDatumId,
+      SystemId: systemId,
     },
     defaults: {
-      type: body.type, // typescriddpt doesn't understand type from where would be used
-      value: body.value,
+      type: overrideType, // typescriddpt doesn't understand type from where would be used
+      value: overrideValue,
+      creationDate: DateTime.now().toISO(),
+      lastUpdate: DateTime.now().toISO(),
     },
   });
 
   if (!newLock) {
-    lockResult.value = body.value;
+    lockResult.value = overrideValue;
+    lockResult.lastUpdate = DateTime.now().toISO();
     await lockResult.save();
   }
 

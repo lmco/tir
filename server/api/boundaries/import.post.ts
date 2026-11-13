@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
   var CachedStig_StigData: { [id: number]: number[] } = {};
   var SystemAssessmentStigs: { [id: number]: number[] } = {};
   var SucceededStigs = [];
-  var SystemLookupTable: { [id: number]: number } = {};
+  var SystemLookupTable: { [id: number]: { key: number; value: number } } = {};
 
   // Order of operations
   // 1. Iterate Files
@@ -270,6 +270,19 @@ export default defineEventHandler(async (event) => {
         }
         // end for assessments loop
 
+        const importedSystemIds = new Set(boundary.Boundary.Systems.map((system) => system.id));
+        const assessmentWithMissingSystem = boundary.Assessments.find(
+          (assessment) => !importedSystemIds.has(assessment.SystemId),
+        );
+        if (assessmentWithMissingSystem) {
+          throw createError({
+            statusCode: 400,
+            statusMessage:
+              `Assessment references a SystemId not present in the imported boundary's systems: ` +
+              assessmentWithMissingSystem.SystemId,
+          });
+        }
+
         // Verify there are no missing stigs in imported boundary library
         // If no missing stig data exists, lets proceed to creating boundary and eval objects
         if (missingStigs.length != 0) {
@@ -410,13 +423,10 @@ export default defineEventHandler(async (event) => {
                   stigLookupValue = StigLookupTable[assessment.StigId];
                 }
 
-                let systemLookupValue = -1;
-                if (assessment.SystemId in SystemLookupTable) {
-                  systemLookupValue = SystemLookupTable[assessment.SystemId];
-                }
+                const systemLookupValue = SystemLookupTable[assessment.SystemId]!;
 
                 const newAssessment = await createBlankAssessment(
-                  systemLookupValue == -1 ? assessment.SystemId : systemLookupValue.value,
+                  systemLookupValue.value,
                   stigLookupValue == -1 ? assessment.StigId : stigLookupValue.value,
                 );
                 newAssessment.succeededByAssessmentId = assessment.succeededByAssessmentId;
@@ -448,22 +458,29 @@ export default defineEventHandler(async (event) => {
                         ai.StigDatum.StigOverrides.length > 0
                       ) {
                         for (const so of ai.StigDatum.StigOverrides) {
-                          // need type, value, lastUpdate, creationDate, SystemId, StigDatumId
+                          if (so.SystemId !== assessment.SystemId) continue;
+
                           let myMappedStigDatum = DatumLookupTable[so.StigDatumId].value;
-                          let myOverride = await StigOverride.findOrCreate({
+                          const [myOverride, created] = await StigOverride.findOrCreate({
                             where: {
                               type: so.type,
-                              value: so.value,
                               SystemId: systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
                             defaults: {
                               type: so.type, // typescript doesn't understand type from where would be used
                               value: so.value,
+                              creationDate: DateTime.now().toISO(),
+                              lastUpdate: DateTime.now().toISO(),
                               SystemId: systemLookupValue.value,
                               StigDatumId: myMappedStigDatum,
                             },
                           });
+                          if (!created && myOverride.value !== so.value) {
+                            myOverride.value = so.value;
+                            myOverride.lastUpdate = DateTime.now().toISO();
+                            await myOverride.save();
+                          }
                         }
                       }
                     }
