@@ -4,6 +4,7 @@ import { convertToCKL3 } from "../../utils/checklist_v3";
 
 export default defineEventHandler(async (event) => {
   const query = await getQuery(event);
+  const groupValue = query.groupValue === "host" ? "host" : "system";
   const checkResult = await userCheck(event, undefined, query.BoundaryId?.toString(), undefined);
   // Use query params to endpoint:
   //       singlestig   (true/false)
@@ -22,17 +23,15 @@ export default defineEventHandler(async (event) => {
     for (const ckl of checklists) {
       const pretty = JSON.stringify(ckl);
       // using ckl.target_data.host_name / as folder containing each file to be zipped
-      if (query.groupValue === "host") {
-         zip.addBuffer(
-          Buffer.from(pretty, "utf8"),
-          ckl.target_data.host_name + "/" + ckl.title + ".cklb",
-        );
-      } else if (query.groupValue === "system") {
-        zip.addBuffer(
-          Buffer.from(pretty, "utf8"),
-          ckl.target_data.tir_name + "/" + ckl.title + ".cklb",
-        );
-      }
+      const folderName =
+        groupValue === "host"
+          ? ckl.target_data.host_name || ckl.target_data.tir_name
+          : ckl.target_data.tir_name;
+
+      zip.addBuffer(
+        Buffer.from(pretty, "utf8"),
+        `${folderName}/${ckl.title}.cklb`,
+      );
     }
         // Set the response headers
     event.node.res.setHeader('Content-Type', 'application/zip');

@@ -10,6 +10,7 @@ import { zipDirectoryContents } from "~/server/utils/zip";
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
+  const groupValue = query.groupValue === "host" ? "host" : "system";
   if (!query.BoundaryId) {
     throw createError({
       statusCode: 400,
@@ -70,7 +71,9 @@ export default defineEventHandler(async (event) => {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error) {
-    logger.error(`Unabled to create dirPath dir ${dirPath} in ${config.temp_folder} error msg -> ${error}`);
+    logger.error(
+      `Unabled to create dirPath dir ${dirPath} in ${config.temp_folder} error msg -> ${error}`,
+    );
     throw createError({
       statusCode: 503,
       statusMessage: "Unable to create Checklist.",
@@ -78,14 +81,9 @@ export default defineEventHandler(async (event) => {
   }
 
   for (const system of boundary.Systems ?? []) {
-    let systemPath = '';
-    if (query.groupValue === "host") {
-      systemPath = path.join(dirPath, system.hostName);
-    }
-    else if(query.groupValue === "system") {
-      systemPath = path.join(dirPath, system.name);
-    }
-    
+    const folderName = groupValue === "host" ? system.hostName || system.name : system.name;
+
+    const systemPath = path.join(dirPath, folderName);
 
     try {
       await fs.mkdir(systemPath, { recursive: true });
