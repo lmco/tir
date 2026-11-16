@@ -730,7 +730,7 @@ function updateVar() {
 
   startingCatPosition.value = catOptions.findIndex((option) => option.title === getCheckSeverity(check));
 
-  severity.value = catOptions[startingCatPosition.value] || catOptions[0];
+  severity.value = catOptions[startingCatPosition.value] || blankCategory;
 
   editSeverity.value = check.severityOverride ? severityMap.get(check.severityOverride) : null;
 }
@@ -749,6 +749,7 @@ const statusOptions = [
 ];
 
 const catOptions = [{ title: "CAT I" }, { title: "CAT II" }, { title: "CAT III" }];
+const blankCategory = { title: "" };
 
 const severityMap = new Map();
 severityMap.set("low", "CAT III");
@@ -773,7 +774,7 @@ const startingCatPosition = ref(
   catOptions.findIndex((option) => option.title === getCheckSeverity(listOfChecks[checkData.value])),
 );
 
-const severity = ref(catOptions[startingCatPosition.value] || catOptions[0]);
+const severity = ref(catOptions[startingCatPosition.value] || blankCategory);
 
 const editId = ref(listOfChecks[assessmentId.value].id);
 const editFinding = ref(listOfChecks[assessmentId.value].finding_details);
@@ -857,14 +858,24 @@ function closeModal() {
 function openModal() {
   isOpen.value = true;
 }
-function checkSeverity(title) {
-  const baseSeverity = severityMap.get(currentSeverity.value);
+function checkSeverity(selectedCategory) {
+  const check = listOfChecks[checkData.value];
+  const baseCategory = severityMap.get(currentSeverity.value);
 
-  if (title !== baseSeverity) {
-    openModal();
-  } else {
+  const lockedCategory = check.StigDatum.StigOverrides?.find(
+    (override) => override.type === "severity",
+  )?.value;
+
+  if (selectedCategory === baseCategory) {
     editSeverity.value = null;
     editJustification.value = null;
+    return;
   }
+
+  if (selectedCategory === lockedCategory) {
+    return;
+  }
+
+  openModal();
 }
 </script>
