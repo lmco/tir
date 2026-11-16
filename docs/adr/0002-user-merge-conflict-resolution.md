@@ -96,9 +96,9 @@ audit-logged at `notice`.
 
 Requires the multi-identity model (ADR 0001). Depends on the Admin-is-not-a-Member
 invariant holding, enforced by separate work. Acceptance criteria for the
-user-merge feature issue derive from this ADR. Discussed in #197.
+user-merge feature issue derive from this ADR. Discussed in mitre/tir discussion 197.
 
-Still open from #197 and relevant here: what a re-sync does with a member's
+Still open from mitre/tir discussion 197 and relevant here: what a re-sync does with a member's
 boundary memberships when it promotes them to Admin (strip the rows, or keep
 them and block boundary data access). The answer decides whether a merge can
 ever leave membership rows on an Admin.

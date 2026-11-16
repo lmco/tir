@@ -17,8 +17,8 @@ different emails, each provider lands on (or creates) a separate User, and there
 is no way to tell TIR those accounts are the same person. So a person cannot
 deliberately link identities that do not share an email, and the separate
 accounts that result cannot be merged. MITRE raised multi-identity logins and
-account-merge as a nice-to-have (see #171, #170, and the PR #183 review), and
-the design was worked through in discussion #197. How should a User relate to
+account-merge as a nice-to-have (see mitre/tir#171, mitre/tir#170, and the mitre/tir#183 review), and
+the design was worked through in mitre/tir discussion 197. How should a User relate to
 the credentials they log in with?
 
 ## Decision Drivers
@@ -120,11 +120,11 @@ role.
 ## More Information
 
 Phase 1 of a two-phase effort; Phase 2 is the merge (ADR 0002). Decided in
-discussion #197. Related: #171 (multiple SSO methods at once), #170 (local
-registration), PR #183. Until this lands, lmco/tir ADR 0003 holds an interim
+mitre/tir discussion 197. Related: mitre/tir#171 (multiple SSO methods at once), mitre/tir#170 (local
+registration), mitre/tir#183. Until this lands, lmco/tir ADR 0003 holds an interim
 rule of one sign-in method per account.
 
-Still open from #197:
+Still open from mitre/tir discussion 197:
 
 - When a User's identities map to different global roles, whether the least
   privileged of them applies.
