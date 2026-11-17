@@ -1920,6 +1920,7 @@ async function saveAssignment() {
       if(selected?.id){
         assignments.push({
           type: inputFile?.credentialed ? "nessus" : inputFile?.itemType, 
+          fileId: inputFile?.fileId,
           fileName: inputFile?.fileName ?? inputFile?.name ?? item.folder,
           hostName: inputFile?.credentialed ? inputFile.name : undefined,
           systemId: selected.id,

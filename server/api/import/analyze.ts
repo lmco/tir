@@ -98,6 +98,12 @@ export default defineEventHandler(async (event) => {
       const savedPath = safeJoin(uploadsDir, relativePath.replace(/\\/g, "/"));
 
       fs.mkdirSync(path.dirname(savedPath), { recursive: true });
+      if (fs.existsSync(savedPath)) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `Duplicate upload path: ${relativePath}`,
+        });
+      }
       fs.renameSync(uploadedFile.filepath, savedPath);
       discoveredFiles.push({
         originalName: fileName,
@@ -106,13 +112,12 @@ export default defineEventHandler(async (event) => {
         ext,
       });
       if (ext === ".zip") {
-        const extractedFiles = await extractFilesFromZip(savedPath, extractedDir);
+        const zipDir = path.join(extractedDir, `zip-${i}`);
+        const extractedFiles = await extractFilesFromZip(savedPath, zipDir);
 
         discoveredFiles.push(...extractedFiles);
 
-        analyzableFiles.push(
-          ...extractedFiles.filter((file) => supportedExtensions.has(file.ext)),
-        );
+        analyzableFiles.push(...extractedFiles.filter((file) => supportedExtensions.has(file.ext)));
         continue;
       }
 
@@ -142,11 +147,17 @@ export default defineEventHandler(async (event) => {
     const notCredentialed: any[] = [];
 
     const isEStigImport = discoveredFiles.some((file) => isEvaluateStigLog(file.relativePath));
-    const normalizedFiles = isEStigImport
-      ? analyzableFiles.filter((file) => {
-          return isChecklistPath(file.relativePath) && !isInsidePreviousFolder(file.relativePath);
-        })
-      : analyzableFiles;
+    const normalizedFiles = (
+      isEStigImport
+        ? analyzableFiles.filter(
+            (file) =>
+              isChecklistPath(file.relativePath) && !isInsidePreviousFolder(file.relativePath),
+          )
+        : analyzableFiles
+    ).map((file) => ({
+      ...file,
+      fileId: crypto.randomUUID(),
+    }));
 
     for (const file of normalizedFiles) {
       const content = fs.readFileSync(file.path, "utf-8");
@@ -158,6 +169,7 @@ export default defineEventHandler(async (event) => {
           if (host.systemMatch) {
             autoMatched.push({
               type: "nessus",
+              fileId: file.fileId,
               fileName: file.originalName,
               systemId: host.systemId,
               hostName: host.name,
@@ -168,6 +180,7 @@ export default defineEventHandler(async (event) => {
 
             const nessusItem = {
               ...host,
+              fileId: file.fileId,
               fileName: file.originalName,
               itemType: "nessus",
             };
@@ -196,18 +209,26 @@ export default defineEventHandler(async (event) => {
         if (checklistResult.systemMatch && checklistResult.systemId) {
           autoMatched.push({
             type: "ckl",
+            fileId: file.fileId,
             fileName: file.originalName,
             systemId: checklistResult.systemId,
             systemName: checklistResult.systemName,
           });
         } else {
+          const cklItem = {
+            name: file.originalName,
+            fileId: file.fileId,
+            itemType: "ckl",
+          };
+
           const existing = needsInput.find((item) => item.folder === sourceName);
+
           if (existing) {
-            existing.files.push({ name: file.originalName, itemType: "ckl" });
+            existing.files.push(cklItem);
           } else {
             needsInput.push({
               folder: sourceName,
-              files: [{ name: file.originalName, itemType: "ckl" }],
+              files: [cklItem],
             });
           }
         }
@@ -216,18 +237,26 @@ export default defineEventHandler(async (event) => {
         if (checklistResult.systemMatch && checklistResult.systemId) {
           autoMatched.push({
             type: "cklb",
+            fileId: file.fileId,
             fileName: file.originalName,
             systemId: checklistResult.systemId,
             systemName: checklistResult.systemName,
           });
         } else {
+          const cklItem = {
+            name: file.originalName,
+            fileId: file.fileId,
+            itemType: "cklb",
+          };
+
           const existing = needsInput.find((item) => item.folder === sourceName);
+
           if (existing) {
-            existing.files.push({ name: file.originalName, itemType: "cklb" });
+            existing.files.push(cklItem);
           } else {
             needsInput.push({
               folder: sourceName,
-              files: [{ name: file.originalName, itemType: "cklb" }],
+              files: [cklItem],
             });
           }
         }
@@ -236,6 +265,7 @@ export default defineEventHandler(async (event) => {
 
         const xmlItem = {
           name: file.originalName,
+          fileId: file.fileId,
           itemType: "xml",
         };
         if (existing) {
@@ -280,29 +310,27 @@ export default defineEventHandler(async (event) => {
   }
 });
 
-  const getSourceName = (relativePath: string, originalName: string): string => {
-    const parts = relativePath.split(/[\\/]/).filter(Boolean);
+const getSourceName = (relativePath: string, originalName: string): string => {
+  const parts = relativePath.split(/[\\/]/).filter(Boolean);
 
-    const checklistIndex = parts.findIndex(
-      (part) => part.toLowerCase() === "checklist",
-    );
+  const checklistIndex = parts.findIndex((part) => part.toLowerCase() === "checklist");
 
-    if (checklistIndex > 0) {
-      return parts[checklistIndex - 1];
-    }
+  if (checklistIndex > 0) {
+    return parts[checklistIndex - 1];
+  }
 
-    // individual file upload
-    if (parts.length <= 1) {
-      return originalName;
-    }
+  // individual file upload
+  if (parts.length <= 1) {
+    return originalName;
+  }
 
-    if (parts.length >= 3) {
-      return parts[1];
-    }
+  if (parts.length >= 3) {
+    return parts[1];
+  }
 
-    // System/file
-    return parts[0];
-  };
+  // System/file
+  return parts[0];
+};
 
 const isEvaluateStigLog = (relativePath: string): boolean => {
   return path.basename(relativePath).toLowerCase() === "evaluate-stig.log";
@@ -370,50 +398,62 @@ const extractFilesFromZip = async (
     originalName: string;
     ext: string;
   }[] = [];
-
+  const extractedPaths = new Set<string>();
   const zip = await openZip(sourceZip);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      zip.readEntry();
 
-  await new Promise<void>((resolve, reject) => {
-    zip.readEntry();
-
-    zip.on("entry", (entry) => {
-      if (entry.fileName.endsWith("/")) {
-        zip.readEntry();
-        return;
-      }
-
-      const safeEntryName = entry.fileName.replace(/^[/\\]+/, "");
-      const destination = safeJoin(outputDirectory, safeEntryName);
-      const ext = path.extname(entry.fileName).toLowerCase();
-
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-
-      zip.openReadStream(entry, (err, readStream) => {
-        if (err || !readStream) {
-          reject(err);
-          return;
-        }
-
-        pipeline(readStream, fs.createWriteStream(destination))
-          .then(() => {
-            extractedFiles.push({
-              path: destination,
-              relativePath: safeEntryName,
-              originalName: path.basename(entry.fileName),
-              ext,
-            });
-
+      zip.on("entry", (entry) => {
+        try {
+          if (entry.fileName.endsWith("/")) {
             zip.readEntry();
-          })
-          .catch(reject);
+            return;
+          }
+
+          const safeEntryName = entry.fileName.replace(/^[/\\]+/, "");
+          const destination = safeJoin(outputDirectory, safeEntryName);
+
+          if (extractedPaths.has(destination)) {
+            throw new Error(`Duplicate ZIP entry: ${entry.fileName}`);
+          }
+
+          extractedPaths.add(destination);
+
+          const ext = path.extname(entry.fileName).toLowerCase();
+
+          fs.mkdirSync(path.dirname(destination), { recursive: true });
+
+          zip.openReadStream(entry, (err, readStream) => {
+            if (err || !readStream) {
+              reject(err ?? new Error("Unable to read ZIP entry"));
+              return;
+            }
+
+            pipeline(readStream, fs.createWriteStream(destination))
+              .then(() => {
+                extractedFiles.push({
+                  path: destination,
+                  relativePath: safeEntryName,
+                  originalName: path.basename(entry.fileName),
+                  ext,
+                });
+
+                zip.readEntry();
+              })
+              .catch(reject);
+          });
+        } catch (error) {
+          reject(error);
+        }
       });
+
+      zip.on("end", resolve);
+      zip.on("error", reject);
     });
-
-    zip.on("end", resolve);
-    zip.on("error", reject);
-  });
-
-  zip.close();
+  } finally {
+    zip.close();
+  }
   return extractedFiles;
 };
 

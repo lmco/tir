@@ -81,9 +81,15 @@ export default defineEventHandler(async (event) => {
     });
   }
   for (const file of analyzableFiles) {
+    if (typeof file.fileId !== "string" || !file.fileId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "Invalid analysis file ID. Please re-upload.",
+      });
+    }
     const fileData = fs.readFileSync(file.path, "utf8");
-    const assignment = receivedAssignments.find((a: any) => a.fileName === file.originalName);
-    const autoMatch = autoMatched.find((a: any) => a.fileName === file.originalName);
+    const assignment = receivedAssignments.find((a: any) => a.fileId === file.fileId);
+    const autoMatch = autoMatched.find((a: any) => a.fileId === file.fileId);
 
     const systemId = Number(assignment?.systemId ?? autoMatch?.systemId);
 
@@ -100,16 +106,17 @@ export default defineEventHandler(async (event) => {
 
     if (file.ext === ".nessus") {
       const autoMatches = autoMatched
-        .filter((match: any) => match.type === "nessus" && match.fileName === file.originalName)
+        .filter((match: any) =>
+          match.type === "nessus" && match.fileId === file.fileId
+        )
         .map((match: any) => ({
           SystemId: Number(match.systemId),
           NessusHostName: match.hostName,
         }));
 
       const assignedMatches = receivedAssignments
-        .filter(
-          (assignment: any) =>
-            assignment.type === "nessus" && assignment.fileName === file.originalName,
+        .filter((assignment: any) =>
+          assignment.type === "nessus" && assignment.fileId === file.fileId
         )
         .map((assignment: any) => ({
           SystemId: Number(assignment.systemId),
@@ -117,6 +124,7 @@ export default defineEventHandler(async (event) => {
         }));
 
       const nessusMatches = [...autoMatches, ...assignedMatches];
+
       if (nessusMatches.length > 0) {
         await importNessus(fileData, nessusMatches);
       }
