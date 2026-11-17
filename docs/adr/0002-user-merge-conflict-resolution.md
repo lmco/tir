@@ -43,7 +43,8 @@ person could reach while keeping a deterministic default, with an escape hatch
 (per-role override in the preview) for the cases an Admin wants to change.
 
 The target (surviving User) must be a non-Admin; the source may be any Role and
-its global Role is discarded. Members are unioned, with the target's role winning
+its global Role is discarded. Merging an Admin source is the one case where an
+Admin's identities move without that Admin proving ownership (ADR 0001). Members are unioned, with the target's role winning
 on shared-node conflicts. The merge preview lists conflicts and allows per-role
 override. Eval and milestone assignments and notifications are reassigned and
 de-duped; source tokens are revoked and sessions invalidated; the target wins on

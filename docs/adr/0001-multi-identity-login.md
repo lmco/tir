@@ -51,28 +51,48 @@ OIDC subject / LDAP DN, and the local password credential) move off the User row
 onto a one-to-many Identity table. Login resolves
 `provider + external key -> Identity -> User`, replacing today's
 `User.findOne({ where: { email } })`. The User keeps a single `primaryEmail` for
-display and notifications.
+display and notifications. It stays unique across Users, as email is today.
 
 Phase 1 lands as one change: a single migration introduces Identity and moves
 the external keys and credentials onto it, and all four providers switch to it
 together, rather than slicing provider by provider, so the schema changes once.
 
-Linking is explicit and user-initiated. An SSO identity TIR does not recognise
-is never attached to a User because its email matches one. The user is told the
-login is not recognised and asked to sign in with an existing TIR credential;
-once they do, the new Identity is attached to that User. With no existing
-account and self-registration off, the login is rejected. Where a provider has
-group mappings, the first login may instead offer the choice between creating
-a new account and attaching an existing one. Proving ownership by a
-confirmation email is an acceptable alternative proof.
+Linking is explicit. An identity TIR does not recognise is never attached to a
+User because its email matches one. A person attaches it by proving ownership
+of the User, either by signing in with one of its existing credentials or by a
+confirmation email.
+
+Each external provider has a "create accounts on first login" switch, on by
+default for existing and new providers, which is today's behaviour.
+"Self-registration" means only the local sign-up form (mitre/tir#170) and has
+no bearing on external providers. What happens when an unrecognised identity
+signs in:
+
+- Its email matches the `primaryEmail` of an existing User, whatever the switch
+  is set to: the person is asked to connect the login by proving ownership of
+  that User. If they cannot, the login is rejected. The match only triggers the
+  question and never links.
+- No match, switch on: the account is created without a prompt, as today. The
+  provider's group mappings still decide who is admitted and which role they
+  get, so an unmapped user on a mapped provider is rejected.
+- No match, switch off: the login is rejected with a message that an Admin must
+  create the account. The switch wins over group mappings, so a user in a
+  mapped group is rejected too.
+
+A signed-in user can connect a further login, including one with a different
+email, from their profile page. Turning the switch off asks the Admin to
+confirm that first-time users of that provider will be rejected.
 
 An Admin can also attach an Identity to a User, or remove one, from the user
 editor. This covers a person who cannot prove ownership themselves, such as a
 forgotten local password or an account whose only credential lives at another
 provider. The User must be a non-Admin, matching the merge rule in ADR 0002, so
-that admin rights are never reached through an identity an Admin attached. An
-Admin's own identities change only when that Admin proves ownership. The action
-is audit-logged.
+that an existing Admin account is never taken over through an identity an Admin
+attached, and an Admin cannot attach or remove another Admin's identities from
+the user editor. Re-sync still applies to an attached Identity. If its provider
+claims map to Admin, the User is promoted at the next login, exactly as that
+identity would receive Admin on a new account, because the provider is the
+authority for claim-mapped roles. The action is audit-logged.
 
 Provider claims are authoritative and re-synced on every login, not only when
 the account is created: the Identity's metadata (name) and the mapped global
@@ -98,6 +118,10 @@ them later.
   what makes it visible.
 - Bad, because an Admin who loses every credential cannot be helped by
   attaching a new Identity. Another Admin resets their local password instead.
+- Bad, because the same-email prompt tells whoever holds a matching identity at
+  a configured provider that an account with that email exists.
+- Bad, because with the switch off every new person needs an Admin to create
+  their account before their first login.
 - Neutral, because the password scheme is unchanged when the credential moves
   onto Identity: still PBKDF2-HMAC-SHA256 (600k iterations) with a per-user salt
   and a `SECRET_KEY` pepper; only its storage location and encoding change.
@@ -115,10 +139,13 @@ is attached to a User only after the person proves ownership of that User, by
 presenting one of its existing credentials or by a confirmation email, or
 when an Admin attaches it, and never because the email addresses match. An
 Admin attaching or removing an Identity writes an audit entry. Attaching an
-Identity to an Admin from the user editor is rejected. For a User with a single Identity, a
-login whose claims map a different global role changes the User's role. How
-roles combine when a User's identities disagree waits on the open question
-below.
+Identity to an Admin from the user editor is rejected. With a provider's create
+switch off, a first-time login with no matching User creates no account, and
+turning the switch off asks for confirmation. A first-time login whose email
+matches an existing User creates no account and attaches nothing until
+ownership is proven. For a User with a single Identity, a login whose claims
+map a different global role changes the User's role. How roles combine when a
+User's identities disagree waits on the open question below.
 
 ## Pros and Cons of the Options
 
@@ -142,6 +169,10 @@ Phase 1 of a two-phase effort; Phase 2 is the merge (ADR 0002). Decided in
 mitre/tir discussion 197. Related: mitre/tir#171 (multiple SSO methods at once), mitre/tir#170 (local
 registration), mitre/tir#183. Until this lands, lmco/tir ADR 0003 holds an interim
 rule of one sign-in method per account.
+
+A possible later addition, behind its own option: with the create switch off,
+hold an unknown person's account pending Admin approval instead of rejecting
+the login.
 
 Still open from mitre/tir discussion 197:
 
