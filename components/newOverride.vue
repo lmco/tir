@@ -148,6 +148,7 @@
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from "@headlessui/vue";
 import { XMarkIcon, LockClosedIcon } from "@heroicons/vue/24/outline";
 import { useAlertsStore } from "~/stores/AlertsStore";
+import { useNotificationStore } from "~/stores/NotificationStore";
 
 // const { open, overrideClass, overrides } = defineProps({
 //   open: Boolean,
@@ -174,6 +175,7 @@ const props = defineProps({
 });
 const { open, overrideClass, overrides } = toRefs(props);
 const alertsStore = useAlertsStore();
+const notificationStore = useNotificationStore();
 
 const localOverrides = ref(overrides.value);
 let preserveModalEditsDuringParentRefresh = false;
@@ -377,10 +379,10 @@ async function saveOverrides() {
           if (removed) {
             lock.id = null;
             if (removalResult.removed === 0) {
-              alertsStore.reportError(
-                "STIG override lock was already absent",
-                new Error("No matching lock row needed to be removed."),
-              );
+              notificationStore.addNotification({
+                type: "error",
+                message: "STIG override lock was already absent, no matching lock row needed to be removed.", 
+              });
             }
           }
         }
