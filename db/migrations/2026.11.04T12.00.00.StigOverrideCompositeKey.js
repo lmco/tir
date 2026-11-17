@@ -30,12 +30,16 @@ const duplicateIds = (table, dialect) => `
   SELECT id
   FROM (
     SELECT
-      overrides.id,
+      id,
       ROW_NUMBER() OVER (
-        PARTITION BY overrides.type, overrides."SystemId", overrides."StigDatumId"
-        ORDER BY ${normalizedLastUpdate('overrides."lastUpdate"', dialect)} DESC NULLS LAST, overrides.id DESC
+        PARTITION BY type, "StigDatumId", "SystemId"
+        ORDER BY
+          ${normalizedLastUpdate('"lastUpdate"', dialect)} DESC NULLS LAST,
+          id DESC
       ) AS duplicate_rank
-    FROM ${table} AS overrides
+    FROM ${table}
+    WHERE "SystemId" IS NOT NULL
+      AND "StigDatumId" IS NOT NULL
   ) ranked
   WHERE duplicate_rank > 1
 `;
@@ -118,28 +122,36 @@ export const up = async ({ context: sequelize }) => {
     throw new Error("STIG override migration is in an unexpected partial state.");
   }
 
-  if (!archiveExists) {
+  if (!indexExists) {
     const archiveTransaction = await sequelize.transaction();
     try {
-      await queryInterface.createTable(
-        duplicateTableName,
-        {
-          id: { type: DataTypes.INTEGER, primaryKey: true, allowNull: false },
-          type: { type: DataTypes.TEXT, allowNull: false },
-          value: { type: DataTypes.TEXT, allowNull: false },
-          lastUpdate: { type: DataTypes.TEXT, allowNull: false },
-          creationDate: { type: DataTypes.TEXT, allowNull: false },
-          SystemId: {
-            type: DataTypes.INTEGER,
-            allowNull: true,
+      if (!archiveExists) {
+        await queryInterface.createTable(
+          duplicateTableName,
+          {
+            id: { type: DataTypes.INTEGER, primaryKey: true, allowNull: false },
+            type: { type: DataTypes.TEXT, allowNull: false },
+            value: { type: DataTypes.TEXT, allowNull: false },
+            lastUpdate: { type: DataTypes.TEXT, allowNull: false },
+            creationDate: { type: DataTypes.TEXT, allowNull: false },
+            SystemId: {
+              type: DataTypes.INTEGER,
+              allowNull: true,
+            },
+            StigDatumId: {
+              type: DataTypes.INTEGER,
+              allowNull: true,
+            },
           },
-          StigDatumId: {
-            type: DataTypes.INTEGER,
-            allowNull: true,
-          },
-        },
+          { transaction: archiveTransaction },
+        );
+      }
+
+      const [beforeCountRows] = await sequelize.query(
+        `SELECT COUNT(*) AS "count" FROM ${duplicateTable}`,
         { transaction: archiveTransaction },
       );
+      const beforeCount = Number(beforeCountRows[0]?.count ?? 0);
 
       await sequelize.query(
         `
@@ -149,15 +161,16 @@ export const up = async ({ context: sequelize }) => {
         SELECT id, type, value, "lastUpdate", "creationDate", "SystemId", "StigDatumId"
         FROM ${table}
         WHERE id IN (${rowsToArchive(table, dialect)})
+          AND id NOT IN (SELECT id FROM ${duplicateTable})
       `,
         { transaction: archiveTransaction },
       );
 
-      const [countRows] = await sequelize.query(
-        `SELECT COUNT(*) AS "archivedCount" FROM ${duplicateTable}`,
+      const [afterCountRows] = await sequelize.query(
+        `SELECT COUNT(*) AS "count" FROM ${duplicateTable}`,
         { transaction: archiveTransaction },
       );
-      const archivedCount = Number(countRows[0]?.archivedCount ?? 0);
+      const newlyArchivedCount = Number(afterCountRows[0]?.count ?? 0) - beforeCount;
 
       await sequelize.query(
         `
@@ -170,7 +183,7 @@ export const up = async ({ context: sequelize }) => {
       await archiveTransaction.commit();
 
       console.log(
-        `[StigOverrideCompositeKey] Archived ${archivedCount} duplicate or incomplete row(s) from "StigOverrides". Inspect "${duplicateTableName}" for archived records.`,
+        `[StigOverrideCompositeKey] Archived ${newlyArchivedCount} duplicate or incomplete row(s) from "StigOverrides". Inspect "${duplicateTableName}" for archived records.`,
       );
     } catch (error) {
       await archiveTransaction.rollback();
