@@ -272,8 +272,11 @@ export default defineEventHandler(async (event) => {
 
         const importedSystemIds = new Set(boundary.Boundary.Systems.map((system) => system.id));
         const assessmentWithMissingSystem = boundary.Assessments.find(
-          (assessment) => !importedSystemIds.has(assessment.SystemId),
+          (assessment) =>
+            !importedSystemIds.has(assessment.SystemId) &&
+            assessment.succeededByAssessmentId == null
         );
+        
         if (assessmentWithMissingSystem) {
           throw createError({
             statusCode: 400,

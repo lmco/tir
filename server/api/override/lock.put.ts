@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { System } from "~/db/models";
+import { Assessment, AssessmentItem } from "~/db/models";
 import { StigOverride } from "~/db/models/stigOverride";
 
 export default defineEventHandler(async (event) => {
@@ -33,6 +33,27 @@ export default defineEventHandler(async (event) => {
   const stigDatumId = body.stigDatumId;
   const overrideValue = body.value;
 
+  const thisAssessment = await Assessment.findOne({
+    where: {
+      SystemId: systemId,
+      succeededByAssessmentId: null,
+    },
+    include: [
+      {
+        model: AssessmentItem,
+        where: {
+          StigDatumId: stigDatumId,
+        },
+      },
+    ]
+  })
+  
+  if (!thisAssessment) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "No binding found between this SystemId and this StigDatumID",
+    });
+  }
 
   const [lockResult, newLock] = await StigOverride.findOrCreate({
     where: {
