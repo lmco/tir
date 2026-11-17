@@ -66,6 +66,14 @@ group mappings, the first login may instead offer the choice between creating
 a new account and attaching an existing one. Proving ownership by a
 confirmation email is an acceptable alternative proof.
 
+An Admin can also attach an Identity to a User, or remove one, from the user
+editor. This covers a person who cannot prove ownership themselves, such as a
+forgotten local password or an account whose only credential lives at another
+provider. The User must be a non-Admin, matching the merge rule in ADR 0002, so
+that admin rights are never reached through an identity an Admin attached. An
+Admin's own identities change only when that Admin proves ownership. The action
+is audit-logged.
+
 Provider claims are authoritative and re-synced on every login, not only when
 the account is created: the Identity's metadata (name) and the mapped global
 role are re-applied each time, and the group memberships the provider reports
@@ -84,6 +92,12 @@ them later.
 - Bad, because a role granted inside TIR to an SSO user is undone at their next
   login if the provider's claims do not grant it; the provider is the place to
   change it.
+- Bad, because an Admin who can attach an Identity can attach one of their own
+  to any non-Admin User and sign in as that User. An Admin can already reset a
+  local password, so this is not a new level of trust, and the audit entry is
+  what makes it visible.
+- Bad, because an Admin who loses every credential cannot be helped by
+  attaching a new Identity. Another Admin resets their local password instead.
 - Neutral, because the password scheme is unchanged when the credential moves
   onto Identity: still PBKDF2-HMAC-SHA256 (600k iterations) with a per-user salt
   and a `SECRET_KEY` pepper; only its storage location and encoding change.
@@ -97,9 +111,14 @@ them later.
 All four `server/auth/*AuthProvider.ts` resolve login through Identity with no
 remaining `User.findOne({ where: { email } })` login path; local password
 verifies against the PHC field stored on the Identity. An unknown SSO identity
-is attached to a User only after an existing credential of that User is
-presented. A login whose claims map a different global role changes the User's
-role.
+is attached to a User only after the person proves ownership of that User, by
+presenting one of its existing credentials or by a confirmation email, or
+when an Admin attaches it, and never because the email addresses match. An
+Admin attaching or removing an Identity writes an audit entry. Attaching an
+Identity to an Admin from the user editor is rejected. For a User with a single Identity, a
+login whose claims map a different global role changes the User's role. How
+roles combine when a User's identities disagree waits on the open question
+below.
 
 ## Pros and Cons of the Options
 
