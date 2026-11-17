@@ -59,10 +59,25 @@ StigOverride.init(
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    SystemId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    StigDatumId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
   },
   {
     sequelize,
     modelName: "StigOverride",
     timestamps: false,
+    indexes: [
+      {
+        name: "StigOverrides_type_StigDatumId_SystemId_unique",
+        unique: true,
+        fields: ["type", "StigDatumId", "SystemId"],
+      },
+    ],
   },
 );

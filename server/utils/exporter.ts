@@ -120,6 +120,8 @@ export async function PullBoundaryData(boundaryID: string): Promise<BoundaryExpo
                 include: [
                   {
                     model: StigOverride,
+                    where: { SystemId: sys.id },
+                    required: false,
                   },
                 ],
               },
