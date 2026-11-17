@@ -363,9 +363,8 @@ async function saveOverrides() {
           if (removed) lock.id = null;
         }
         if (overrideClass.value === "stig") {
-          let removalResult;
           const removed = await saveRequest("Failed to remove STIG override lock", async () => {
-            removalResult = await $fetch("/api/override/removeLock", {
+            await $fetch("/api/override/removeLock", {
               method: "DELETE",
               body: {
                 systemId: system.systemId,
