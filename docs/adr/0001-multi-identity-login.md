@@ -59,8 +59,12 @@ together, rather than slicing provider by provider, so the schema changes once.
 
 Linking is explicit. An identity TIR does not recognise is never attached to a
 User because its email matches one. A person attaches it by proving ownership
-of the User, either by signing in with one of its existing credentials or by a
-confirmation email.
+of the User, either by signing in with one of its existing credentials or by
+answering a confirmation email sent to the User's `primaryEmail`. The email
+proof is a deliberate act by someone who controls that mailbox, the same trust
+as an email password reset, which is different from two providers happening to
+report the same address. It is available only where TIR is configured to send
+mail.
 
 Each external provider has a "create accounts on first login" switch, on by
 default for existing and new providers, which is today's behaviour.
