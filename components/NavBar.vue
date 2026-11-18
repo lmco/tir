@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-full">
     <SiteBanner v-if="true" />
-    <div v-if="isDataReady">
+    <div>
       <!-- Static Navigation Bar -->
       <nav class="bg-white shadow dark:bg-gray-800">
         <div class="mx-auto max-w-7xl sm:px-6 lg:px-8">
@@ -220,7 +220,7 @@
                           <tr
                             v-for="alert in sortedAlerts"
                             :key="alert.id"
-                            :class="{ 'bg-gray-200 dark:bg-gray-800': !alert.TirNotifications_Users[0].read }"
+                            :class="{ 'bg-gray-200 dark:bg-gray-800': !alert.TirNotifications_Users?.[0]?.read }"
                           >
                             <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-800 dark:text-gray-300">
                               {{ formartAlertDate(alert.creationDate) }}
@@ -261,9 +261,6 @@
         </div>
       </header>
     </div>
-    <div v-else class="flex min-h-full items-center justify-center">
-      <p>Loading...</p>
-    </div>
     <Notifications />
   </div>
 </template>
@@ -275,10 +272,11 @@ import { ref, computed, watch } from "vue";
 import { DateTime } from "luxon";
 import inflection from "inflection";
 import { useRoute, useRouter } from "vue-router";
-import { useColorMode, useId, useAsyncData } from "#imports";
+import { useColorMode, useId, useAsyncData, useRequestFetch, navigateTo } from "#imports";
 import { useBreadcrumbStore } from "~~/stores/Breadcrumb";
 import { useAliasStore } from "~/stores/AliasStorage";
 import { useAlertsStore } from "~~/stores/AlertsStore";
+import { useNotificationStore } from "~/stores/NotificationStore";
 import Notifications from "~/components/Notifications.vue";
 
 const id = useId();
@@ -288,22 +286,14 @@ const colorMode = useColorMode();
 const breadStore = useBreadcrumbStore();
 const aliasStore = useAliasStore();
 const alertsStore = useAlertsStore();
+const notificationStore = useNotificationStore();
 const showPopup = ref(false);
+const fetchWithCookies = useRequestFetch();
 
-const { data: currentUser, error: userError } = useAsyncData(
+const { data: currentUser, error: userError } = await useAsyncData(
   "currentUser",
-  async () => {
-    try {
-      return await $fetch("/api/auth/currentUser", {
-        method: "GET",
-        credentials: "include",
-      });
-    } catch (err) {
-      console.error("Failed to fetch currentUser:", err);
-      return null;
-    }
-  },
-  { server: false },
+  () => fetchWithCookies("/api/auth/currentUser", { method: "GET", credentials: "include" }),
+  { default: () => null },
 );
 
 // Fetch alerts only after currentUser is available
@@ -317,7 +307,7 @@ const { data: currentAlert, refresh: refreshAlerts } = useAsyncData(
       credentials: "include",
     });
   },
-  { watch: [currentUser] }, // Re-fetch whenever `currentUser` changes
+  { server: false, watch: [currentUser] }, // Re-fetch whenever `currentUser` changes
 );
 // Fetch about data
 const { data: currentAbout } = useAsyncData("currentAbout", async () => {
@@ -329,28 +319,38 @@ const { data: currentAbout } = useAsyncData("currentAbout", async () => {
   }
 });
 
-// Check if data is ready
-const isDataReady = computed(() => !!currentUser.value && !userError.value && navigation.value.length > 0);
+watch(
+  userError,
+  (err) => {
+    if (!err) return;
+    const status = err?.statusCode ?? err?.status ?? err?.response?.status;
+    if (status === 401) {
+      alertsStore.stopPolling();
+      navigateTo("/");
+      return;
+    }
+    if (import.meta.server) return;
+    notificationStore.addNotification({
+      type: "error",
+      message: "Failed to load user profile.",
+    });
+  },
+  { immediate: true },
+);
 
 // Theme handling
 watch(
   currentUser,
   (newUser) => {
-    if (newUser?.Theme) {
-      colorMode.preference = newUser.Theme.name.toLowerCase();
-    } else {
-      colorMode.preference = "system";
-    }
+    colorMode.preference = newUser?.Theme?.name?.toLowerCase() || "system";
   },
   { immediate: true },
 );
 
-const isAdmin = computed(() => currentUser.value?.UserRole?.name === "Admin" || false);
+const isAdmin = computed(() => currentUser.value?.UserRole?.name === "Admin");
 
 const navigation = computed(() => {
   try {
-    if (!currentUser.value) return [];
-
     const path = route.fullPath;
 
     const items = [
@@ -391,13 +391,10 @@ const navigation = computed(() => {
   }
 });
 
-const userNavigation = computed(() => {
-  if (!currentUser.value) return [];
-  return [
-    { name: "Your Profile", href: "/profile/" + (currentUser.value.email || "unknown") },
-    { name: "Sign out", onClick: logoutUser },
-  ];
-});
+const userNavigation = computed(() => [
+  ...(currentUser.value ? [{ name: "Your Profile", href: "/profile/" + (currentUser.value.email || "unknown") }] : []),
+  { name: "Sign out", onClick: logoutUser },
+]);
 
 const headerTitle = computed(() => {
   const currentItem = navigation.value.find((item) => item.current);
@@ -513,6 +510,7 @@ const deleteTheAlert = async (alertId) => {
 watch(
   currentUser,
   (newUser) => {
+    if (import.meta.server) return;
     if (newUser?.id) {
       alertsStore.startPolling(newUser.id);
     } else {
