@@ -49,7 +49,14 @@ export default defineEventHandler(async (event) => {
     delete body.lastName;
   }
 
-  if (body.UserRoleId && user.UserRoleId !== body.UserRoleId) {
+  const roleChange = Boolean(body.UserRoleId) && user.UserRoleId !== body.UserRoleId;
+  if (roleChange && checkResult.UserRoleId !== 1) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Only an administrator can change a user's role.",
+    });
+  }
+  if (roleChange) {
     user.UserRoleId = body.UserRoleId;
   } else {
     delete body.UserRoleId;
