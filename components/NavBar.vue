@@ -253,13 +253,6 @@
           </div>
         </div>
       </nav>
-      <div v-if="hasUserError" role="alert" class="mx-auto mt-4 max-w-7xl px-4 sm:px-6 lg:px-8">
-        <p
-          class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200"
-        >
-          Failed to load user profile.
-        </p>
-      </div>
       <header class="py-10">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <h1 class="text-3xl font-bold tracking-tight text-gray-800 dark:text-white">
@@ -283,6 +276,7 @@ import { useColorMode, useId, useAsyncData, useRequestFetch, navigateTo } from "
 import { useBreadcrumbStore } from "~~/stores/Breadcrumb";
 import { useAliasStore } from "~/stores/AliasStorage";
 import { useAlertsStore } from "~~/stores/AlertsStore";
+import { useNotificationStore } from "~/stores/NotificationStore";
 import Notifications from "~/components/Notifications.vue";
 
 const id = useId();
@@ -292,10 +286,11 @@ const colorMode = useColorMode();
 const breadStore = useBreadcrumbStore();
 const aliasStore = useAliasStore();
 const alertsStore = useAlertsStore();
+const notificationStore = useNotificationStore();
 const showPopup = ref(false);
 const fetchWithCookies = useRequestFetch();
 
-const { data: currentUser, error: userError } = useAsyncData(
+const { data: currentUser, error: userError } = await useAsyncData(
   "currentUser",
   () => fetchWithCookies("/api/auth/currentUser", { method: "GET", credentials: "include" }),
   { default: () => null },
@@ -324,18 +319,21 @@ const { data: currentAbout } = useAsyncData("currentAbout", async () => {
   }
 });
 
-const userErrorStatus = computed(
-  () => userError.value?.statusCode ?? userError.value?.status ?? userError.value?.response?.status,
-);
-const hasUserError = computed(() => Boolean(userError.value) && userErrorStatus.value !== 401);
-
 watch(
-  userErrorStatus,
-  (status) => {
+  userError,
+  (err) => {
+    if (!err) return;
+    const status = err?.statusCode ?? err?.status ?? err?.response?.status;
     if (status === 401) {
       alertsStore.stopPolling();
       navigateTo("/");
+      return;
     }
+    if (import.meta.server) return;
+    notificationStore.addNotification({
+      type: "error",
+      message: "Failed to load user profile.",
+    });
   },
   { immediate: true },
 );
