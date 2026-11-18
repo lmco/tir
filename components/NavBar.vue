@@ -391,13 +391,10 @@ const navigation = computed(() => {
   }
 });
 
-const userNavigation = computed(() => {
-  if (!currentUser.value) return [];
-  return [
-    { name: "Your Profile", href: "/profile/" + (currentUser.value?.email || "unknown") },
-    { name: "Sign out", onClick: logoutUser },
-  ];
-});
+const userNavigation = computed(() => [
+  ...(currentUser.value ? [{ name: "Your Profile", href: "/profile/" + (currentUser.value.email || "unknown") }] : []),
+  { name: "Sign out", onClick: logoutUser },
+]);
 
 const headerTitle = computed(() => {
   const currentItem = navigation.value.find((item) => item.current);
