@@ -457,7 +457,7 @@
                 <TabPanel><BoundaryView :summary="summary || {}" /></TabPanel>
                 <TabPanel><SystemView :summary="summary || {}" :asset-view="assetView" /></TabPanel>
                 <TabPanel><VulnView :summary="summary || {}" /></TabPanel>
-                <TabPanel><SctmView :summary="summary || {}" @refresh-summary="() =>  refreshSummary" /></TabPanel>
+                <TabPanel><SctmView :summary="summary || {}" @refresh-summary="refreshSummary()" /></TabPanel>
               </TabPanels>
             </TabGroup>
           </div>
@@ -1392,7 +1392,7 @@
       :open-members="openWidget"
       :boundary-id="Number(boundaryId)"
       :library-id="summary?.boundaryInfo.StigLibraryId"
-      @open-close="[(openWidget = false),  refreshSummary]"
+      @open-close="[(openWidget = false),  refreshSummary()]"
     />
     <ErrorNotification
       v-if="showErrorNotification"
@@ -1860,16 +1860,27 @@ async function commitImport(assignments: any[] = []){
     return
   }
   loadingProgress.value = 2;
-  await $fetch("/api/import/results/commit", {
-    method: "POST",
-    body: {
-      analysisId: currentAnalysisId.value,
-      assignments,
-    },
-  });
-  loadingProgress.value = 3;
-  currentAnalysisId.value = null;
-  await  refreshSummary();
+
+  try {
+    await $fetch("/api/import/results/commit", {
+      method: "POST",
+      body: {
+        analysisId: currentAnalysisId.value,
+        assignments,
+      },
+    });
+
+    loadingProgress.value = 3;
+    currentAnalysisId.value = null;
+    await refreshSummary();
+  } catch (err) {
+    errorObject.value = err;
+    showErrorNotification.value = true;
+
+    setTimeout(() => {
+      showErrorNotification.value = false;
+    }, 5000);
+  }
 }
 
 async function proceedAfterNessusWarning(){
@@ -1908,6 +1919,7 @@ async function saveAssignment() {
   if(!currentAnalysisId.value){
     return
   }
+  saveError.value = false;
   const assignments: any[] = [];
 
   for (let folderIndex = 0; folderIndex < needsInput.value.length; folderIndex++) {
@@ -1916,7 +1928,10 @@ async function saveAssignment() {
     for(let fileIndex = 0; fileIndex < (item.files?.length ?? 0); fileIndex++){
       const selected = selectedSystem.value?.[folderIndex]?.[fileIndex];
       const inputFile = item.files?.[fileIndex];
-
+      if (inputFile?.itemType !== "nessus" && !selected?.id) {
+        saveError.value = true;
+        return;
+      }
       if(selected?.id){
         assignments.push({
           type: inputFile?.credentialed ? "nessus" : inputFile?.itemType, 
