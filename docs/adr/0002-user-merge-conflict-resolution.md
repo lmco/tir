@@ -47,10 +47,13 @@ person could reach while keeping a deterministic default, with an escape hatch
 The target (surviving User) must be a non-Admin and must hold no Identity whose
 stored provider claims map to Admin, the same test ADR 0001 applies in the user
 editor, so a merge never adds logins to an account that is already an Admin or
-whose stored claims already map to Admin. The source may be any Role and its global Role is
-discarded. When the source holds an Admin-mapped Identity, that Identity moves
-with the rest, so the target is promoted at its next login through it. That is
-the promotion case the open question under More Information covers.
+whose stored claims already map to Admin. The source may be any Role and its
+global Role is discarded. When the source holds an Admin-mapped Identity, that
+Identity moves with the rest, so the target is promoted at its next login
+through it, unless the target also holds an Identity that grants User, in which
+case ADR 0001 leaves the role unchanged until its open question on disagreeing
+Identities is settled. A promoted target is the case the open question under
+More Information covers.
 
 When the source is an Admin, or holds an Identity whose stored provider claims
 map to Admin, the merge needs that person's own proof. It stays pending and
@@ -65,30 +68,31 @@ sets, and a lapsed merge has to be requested again. A User can be the source or
 the target of only one pending merge at a time.
 
 An Admin merging their own account gives the proof by being signed in to it.
-The proof is a sign-in and not the confirmation email ADR 0001 also accepts for
-linking, because an Admin can change another User's `primaryEmail`. This keeps the ADR 0001 rule that an Admin's identities never
-move without that Admin proving ownership. The stored-claims test covers a
-source demoted just before the merge, whose claims would promote the target at
-its next login. The proof is as strong as a sign-in and no stronger. ADR 0001
-leaves an Admin able to set another Admin's local password, so an Admin who
-does that to a source with a local Identity can sign in as it and confirm.
+This keeps the ADR 0001 rule that an Admin's identities never move without that
+Admin proving ownership, and a sign-in is the only proof ADR 0001 accepts. The
+stored-claims test covers a source demoted just before the merge, whose claims
+would promote the target at its next login. The proof is as strong as a sign-in
+and no stronger. ADR 0001 leaves an Admin able to set another Admin's local
+password, so an Admin who does that to a source with a local Identity can sign
+in as it and confirm.
 
 The source's Identities move to the target, so every login that reached the
 source now reaches the target. The one exception follows from ADR 0001 allowing
 a User a single local Identity. When both hold one the target's is kept and the
-source's is dropped, and the preview says so. Members are unioned, with the target's role
-winning on shared-node conflicts. The merge preview lists conflicts and allows
-per-role override. Eval and milestone assignments and notifications are reassigned and
-de-duped; source tokens are revoked and sessions invalidated; the target wins on
-preferences; the source is soft-retired with a `mergedIntoId`; the merge is
-audit-logged at `notice`.
+source's is dropped, and the preview says so. Members are unioned, with the
+target's role winning on shared-node conflicts. The merge preview lists
+conflicts and allows per-role override. Eval and milestone assignments and
+notifications are reassigned and de-duped; source tokens are revoked and
+sessions invalidated; the target wins on preferences; the source is
+soft-retired with a `mergedIntoId`; the merge is audit-logged at `notice`.
 
 The retired source keeps its `primaryEmail`. A first login whose email matches
-it is asked to prove ownership of the target, as ADR 0001 does for a match on a
-live User. No other User may take that address. The target may, and it then
-moves off the retired row, so `primaryEmail` stays unique as ADR 0001 requires.
-So the person's old address keeps leading to their one surviving account, by
-proof and never by the match alone, and does not start a second account.
+it is asked to sign in with one of the target's credentials, as ADR 0001 does
+for a match on a live User. No other User may take that address. The target
+may, and it then moves off the retired row, so `primaryEmail` stays unique as
+ADR 0001 requires. So the person's old address keeps leading to their one
+surviving account, by proof and never by the match alone, and does not start a
+second account.
 
 ### Consequences
 
@@ -115,7 +119,7 @@ proof and never by the match alone, and does not start a second account.
   claims map to Admin.
 - Merging a source that is an Admin, or that holds an Identity whose stored
   claims map to Admin, changes nothing until that person signs in with one of
-  the source's credentials and confirms. A confirmation email is not accepted.
+  the source's credentials and confirms.
 - A pending merge does not commit on confirmation when the target no longer
   passes the target test or the preview has changed since the merging Admin
   approved it.

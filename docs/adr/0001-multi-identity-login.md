@@ -9,8 +9,9 @@ decision-makers: Mark Rivera, Amndeep Singh Mann
 ## Context and Problem Statement
 
 Every provider resolves the login to a User by email:
-`User.findOne({ where: { email } })` in local, LDAP, and OIDC. Email is the
-implicit link between a person and their account. That has two consequences. If
+`User.findOne({ where: { email } })` in local, LDAP, OIDC, and OAuth. Email is
+the implicit link between a person and their account. That has two
+consequences. If
 two providers happen to carry the same email, they collapse onto the same User
 by coincidence of the address, not by any deliberate link. If they carry
 different emails, each provider lands on (or creates) a separate User, and there
@@ -47,27 +48,43 @@ around it.
 
 A User may hold several login Identities, of which at most one is a local
 Identity, so there is one password per User as today. Credentials and external
-keys (email / OIDC subject / LDAP DN, and the local password credential) move
-off the User row onto a one-to-many Identity table. Login resolves
+keys move off the User row onto a one-to-many Identity table. The external key
+is the email for the local credential, the subject for OIDC, the DN for LDAP,
+and the provider's own account id for OAuth. Login resolves
 `provider + external key -> Identity -> User`, replacing today's
-`User.findOne({ where: { email } })`. The User keeps a single `primaryEmail` for
-display and notifications. It stays unique across Users, as email is today.
+`User.findOne({ where: { email } })`, where the provider is the configured
+provider instance, so two OIDC or OAuth providers never share keys. The User
+keeps a single `primaryEmail` for display and notifications. It stays unique
+across Users, as email is today.
 
 Phase 1 lands as one change: a single migration introduces Identity and moves
-the external keys and credentials onto it, and all four providers switch to it
-together, rather than slicing provider by provider, so the schema changes once.
+the credentials onto it, and all four providers switch to it together, rather
+than slicing provider by provider, so the schema changes once.
 
-Linking is explicit. An identity TIR does not recognise is never attached to a
-User because its email matches one. A person attaches it by proving ownership
-of the User, either by signing in with one of its existing credentials or by
-answering a confirmation email sent to the User's `primaryEmail`. The email
-proof is a deliberate act by someone who controls that mailbox, the same trust
-as an email password reset, which is different from two providers happening to
-report the same address. It is available only where TIR is configured to send
-mail. It is not accepted for an Admin, or for a User holding an Identity whose
-stored provider claims (those from its last login) map to Admin, because an
-Admin can change another User's `primaryEmail`. Linking to such a User needs a
-sign-in with one of its existing credentials.
+The external keys are not stored today. OIDC checks the subject and discards
+it, LDAP binds with the DN, OAuth keeps no account id, and each then finds the
+User by email. So the migration cannot fill the keys in, and without a bridge
+every existing external user would arrive after the cutover as an unrecognised
+identity. The migration therefore creates a local Identity for each User with a
+stored password and, for each User whose sign-in method (lmco/tir#14) is an
+external one, a placeholder Identity for that method holding the User's email
+at migration and no key. The first successful login through a provider of that
+method whose email equals the placeholder's records the presented key and the
+provider instance on it. A placeholder is bound once, is not affected by later
+changes to `primaryEmail`, and is never bound by a login whose email differs.
+This is the one place a login is tied to a User by email. It does no more than
+today's login does, it happens once per existing account, and it is filling in
+an Identity the User already holds, so the rules below on changing an Admin's
+Identities do not apply to it.
+
+Linking is explicit. Apart from that one-time bind, an identity TIR does not
+recognise is never attached to a User because its email matches one. A person
+attaches it by proving ownership of the User, which means signing in with one
+of its existing credentials. A confirmation email to the User's `primaryEmail`
+is not a proof. A user can set their `primaryEmail` to any unused address
+without verifying it, so the owner of a mailbox who answered such an email
+could be joining an account someone else opened under their address. A person
+who cannot sign in asks an Admin to attach the Identity.
 
 Each external provider has a "create accounts on first login" switch, on by
 default for existing and new providers, which is today's behaviour.
@@ -76,9 +93,9 @@ no bearing on external providers. What happens when an unrecognised identity
 signs in:
 
 - Its email matches the `primaryEmail` of an existing User, whatever the switch
-  is set to: the person is asked to connect the login by proving ownership of
-  that User. If they cannot, the login is rejected. The match only triggers the
-  question and never links.
+  is set to: the person is asked to connect the login by signing in with one of
+  that User's existing credentials. If they cannot, the login is rejected. The
+  match only triggers the question and never links.
 - No match, switch on: the account is created without a prompt, as today. The
   provider's group mappings still decide who is admitted and which role they
   get, so an unmapped user on a mapped provider is rejected.
@@ -102,20 +119,22 @@ forgotten local password or an account whose only credential lives at another
 provider. The User must be a non-Admin, matching the merge rule in ADR 0002,
 and must hold no Identity whose stored claims map to Admin. So an Admin
 account, or one whose stored claims already map to Admin, is never taken over
-through an identity an Admin attached, and the user editor cannot take an Admin-mapped
-Identity off one User and attach it to another. Such an Identity moves only by
-a merge its holder signs in to confirm (ADR 0002). A User's last Identity
-cannot be removed, so no account is left that nobody can sign in to. The one
-exception is a merge source, which ADR 0002 retires with no Identities. Re-sync still applies to an
-attached Identity. If its provider claims map to Admin, the User is promoted at
-the next login, exactly as that identity would receive Admin on a new account,
-because the provider is the authority for claim-mapped roles. The action is
-audit-logged.
+through an identity an Admin attached, and the user editor cannot take an
+Admin-mapped Identity off one User and attach it to another. Such an Identity
+moves only by a merge its holder signs in to confirm (ADR 0002). A User's last
+Identity cannot be removed, so no account is left that nobody can sign in to.
+The one exception is a merge source, which ADR 0002 retires with no Identities.
+Re-sync still applies to an attached Identity, under the role rules below. If
+its provider claims map to Admin, the User is promoted at the next login,
+exactly as that identity would receive Admin on a new account, because the
+provider is the authority for claim-mapped roles. The promotion waits when
+another of the User's Identities grants a different role, as it does for any
+User whose Identities disagree. The action is audit-logged.
 
 Stored claims begin with Phase 1, so an external Identity has none until it
 first signs in after the migration. The migration therefore marks every
-external Identity of a User who is an Admin at that point as Admin-mapped, and
-the Identity's next login replaces the mark with the claims the provider
+placeholder Identity of a User who is an Admin at that point as Admin-mapped,
+and the login that binds it replaces the mark with the claims the provider
 reports. Without the mark, demoting such an Admin before they next sign in
 would lift every rule here.
 
@@ -130,11 +149,20 @@ and with it a local login. Under this ADR that is attaching a local Identity and
 follows the attach rules above, so it is rejected for an Admin or a User
 holding an Admin-mapped Identity.
 
-Provider claims are authoritative and re-synced on every login, not only when
-the account is created: the Identity's metadata (name) and the mapped global
-role are re-applied each time, and the group memberships the provider reports
-are stored on the Identity so that claim-driven node membership can build on
-them later.
+Provider claims are authoritative for the Identity they come from and are
+re-synced on every login, not only when the account is created. Each login
+stores on that Identity the name the provider reports and its group
+memberships, so that claim-driven node membership can build on them later. The
+name stays on the Identity and does not overwrite the User's own name fields.
+
+The global role follows the claims within three limits. A provider with no
+group mappings never changes it: a new account gets the User role and an
+existing one keeps the role it has. A login that matches mapped groups for both
+roles is granted User, the lower of the two, as the providers decide today, and
+that single granted role is what "maps to Admin" means throughout this ADR.
+When a User holds Identities whose stored claims grant different roles, a login
+does not change the global role until the open question below is settled.
+Otherwise the granted role is applied at each login.
 
 ### Consequences
 
@@ -145,9 +173,15 @@ them later.
   separate `password` and `salt` columns.
 - Bad, because all four providers must be rewired to resolve via Identity; this
   is a prerequisite phase (Phase 1) before user-merge.
-- Bad, because a role granted inside TIR to an SSO user is undone at their next
-  login if the provider's claims do not grant it; the provider is the place to
-  change it.
+- Bad, because a role granted inside TIR to a user of a provider with group
+  mappings is undone at their next login through it when the claims grant a
+  different one; the provider is the place to change it.
+- Bad, because `primaryEmail` is not verified, so a User can hold an address
+  that belongs to someone else. That person's first login is then rejected
+  until an Admin corrects the address. Nothing is linked, which is the point of
+  refusing email as a proof.
+- Bad, because the migration bind trusts a matching email once per existing
+  external account, as every login does today.
 - Bad, because an Admin who can attach an Identity can attach one of their own
   to any non-Admin User and sign in as that User. An Admin can already do that
   today by giving the account a local password, including for a User with only
@@ -181,30 +215,42 @@ them later.
 
 ### Confirmation
 
-All four `server/auth/*AuthProvider.ts` resolve login through Identity with no
-remaining `User.findOne({ where: { email } })` login path; local password
-verifies against the PHC field stored on the Identity. An unknown SSO identity
-is attached to a User only after the person proves ownership of that User, by
-presenting one of its existing credentials or by a confirmation email, or
-when an Admin attaches it, and never because the email addresses match. An
-Admin attaching or removing an Identity writes an audit entry. From the user
-editor, attaching an Identity to or removing one from an Admin, or a User
-holding an Identity whose stored claims map to Admin, is rejected, and so is
-removing a User's last Identity. A confirmation email does not link a login to
-such a User, and an Admin setting a local password for such a User who has no
-local Identity is rejected. Giving a User a second local Identity is rejected
-by every route. A signed-in user, Admin or not, can remove one of their own
-Identities from the profile page but not the last. An external Identity of a User who was an Admin at
-the migration counts as Admin-mapped until its first login afterwards, also
-when that User has been demoted in between. With a provider's create
-switch off, a first-time login with no matching User creates no account, and
-turning the switch off asks for confirmation. A first-time login whose email
-matches an existing User creates no account and attaches nothing until
-ownership is proven. On a provider with group mappings, a login in no mapped
-group is rejected before any Identity lookup, including one that would connect
-to an existing User or that already belongs to one. For a User with a single Identity, a login whose claims
-map a different global role changes the User's role. How roles combine when a
-User's identities disagree waits on the open question below.
+- All four `server/auth/*AuthProvider.ts` resolve login through Identity with
+  no remaining `User.findOne({ where: { email } })` login path. The local
+  password verifies against the PHC field stored on the Identity.
+- After the migration, the first login of an existing external user binds
+  their placeholder Identity and later logins resolve by key. A placeholder is
+  not bound a second time, nor by a login whose email differs from the one it
+  holds.
+- An unknown identity is attached to a User only after the person signs in
+  with one of that User's existing credentials, or when an Admin attaches it,
+  and never because the email addresses match. No confirmation email links a
+  login.
+- A first-time login whose email matches an existing User creates no account
+  and attaches nothing until that sign-in happens.
+- An Admin attaching or removing an Identity writes an audit entry.
+- From the user editor, attaching an Identity to or removing one from an Admin,
+  or a User holding an Identity whose stored claims map to Admin, is rejected.
+  So is an Admin setting a local password for such a User who has no local
+  Identity.
+- Removing a User's last Identity is rejected. A signed-in user, Admin or not,
+  can remove one of their own Identities from the profile page but not the
+  last. Giving a User a second local Identity is rejected by every route.
+- A placeholder Identity of a User who was an Admin at the migration counts as
+  Admin-mapped until the login that binds it, also when that User has been
+  demoted in between.
+- With a provider's create switch off, a first-time login with no matching
+  User creates no account, and turning the switch off asks for confirmation.
+- On a provider with group mappings, a login in no mapped group is rejected
+  before any Identity lookup, including one that would connect to an existing
+  User or that already belongs to one.
+- A login through a provider with no group mappings changes no role. A login
+  matching mapped groups for both roles is granted User.
+- For a User whose Identities grant one role, a login whose claims grant a
+  different global role changes the User's role. When a User's Identities
+  grant different roles a login changes none, pending the open question below.
+- A login stores the reported name on its Identity and leaves the User's name
+  fields as they were.
 
 ## Pros and Cons of the Options
 
