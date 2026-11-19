@@ -1483,6 +1483,7 @@ const vCheckbox = ref(false);
 interface Role {
   name: string;
 }
+const notificationStore = useNotificationStore();
 const selectedRole = ref<Role>({ name: '' });
 const showErrorNotification = ref(false);
 const errorObject = ref();
@@ -1638,10 +1639,7 @@ async function createSystem(isZip: any) {
       formdata.append("SystemName", systemName.value);
       formdata.append("BoundaryId", String(boundaryId));
       loadingProgress.value = 2;
-      await $fetch("/api/import/results", { method: "POST", body: formdata, 
-      headers: {
-      'Content-Type': 'multipart/form-data',
-    }, });
+      await $fetch("/api/import/results", { method: "POST", body: formdata, });
       loadingProgress.value = 3;
     } catch (err) {
       errorObject.value = err;
@@ -1844,13 +1842,14 @@ async function analyzeImportFromFiles(fileList: FileList | null) {
       pendingAssignments.value = [];
       showAutoMatches.value = true;
     }
-  } catch (err){
-    errorObject.value = err;
-    showErrorNotification.value = true;
-    setTimeout(() => {
-      showErrorNotification.value = false;
-    }, 5000);
-  } finally{
+  } catch (error) {
+    const err = error as { data?: { statusMessage?: string } };
+
+    notificationStore.addNotification({
+      type: "error",
+      message: err.data?.statusMessage || "Failed to analyze import files.",
+    });
+} finally{
     loading.value = false;
   }
 }
@@ -1873,13 +1872,12 @@ async function commitImport(assignments: any[] = []){
     loadingProgress.value = 3;
     currentAnalysisId.value = null;
     await refreshSummary();
-  } catch (err) {
-    errorObject.value = err;
-    showErrorNotification.value = true;
-
-    setTimeout(() => {
-      showErrorNotification.value = false;
-    }, 5000);
+  } catch (error) {
+    const err = error as { data?: { statusMessage?: string } };
+    notificationStore.addNotification({
+      type: "error",
+      message: err.data?.statusMessage || "Failed to import results.",
+    });
   }
 }
 

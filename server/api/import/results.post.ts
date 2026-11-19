@@ -186,14 +186,15 @@ const extractZip = (sourceZip: string, outputDirectory: string): Promise<string[
               reject(err);
             } else {
               const writeStream = fs.createWriteStream(entryPath);
-              readStream.pipe(writeStream);
-              readStream.on('end', () => {
-                zipfile.readEntry();
+              readStream.on("error", reject);
+              writeStream.on("error", reject);
+
+              writeStream.on("finish", () => {
                 fileList.push(entryPath);
+                zipfile.readEntry();
               });
-              readStream.on('error', (err) => {
-                reject(err);
-              });
+
+              readStream.pipe(writeStream);
             }
           });
         } else {

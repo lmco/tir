@@ -16,7 +16,11 @@ import {
   ControlNumber,
   ControlRevision,
 } from "../../../db/models";
-import { initializeCounts, initializeSeverityCounts, uniqueTransformSeverityCounts } from "../../utils/findings";
+import {
+  initializeCounts,
+  initializeSeverityCounts,
+  uniqueTransformSeverityCounts,
+} from "../../utils/findings";
 import { PerfTimer } from "../../utils/perfTimer";
 import { createControlRecords } from "../../utils/controls";
 import { NessusPlugin } from "~/db/models/nessusPlugin";
@@ -271,10 +275,7 @@ export default defineEventHandler(async (event) => {
     for (let j = 0; j < uniqueFinding.AssessmentItems.length; j++) {
       const assessmentItem = uniqueFinding.AssessmentItems[j];
       const assessment = assessmentItem.Assessment!;
-      const override = Boolean(
-        assessmentItem.statusOverride ||
-        assessmentItem.severityOverride,
-      );
+      const override = Boolean(assessmentItem.statusOverride || assessmentItem.severityOverride);
       const status = assessmentItem.statusOverride || assessmentItem.status;
       const rawStatus = assessmentItem.status;
       const severity = assessmentItem.severityOverride || uniqueFinding.severity;
@@ -332,7 +333,11 @@ export default defineEventHandler(async (event) => {
 
     addFindings(uniqueCounts, uniqueTransformCounts(tempCounts));
     addSeverityCounts(uniqueSeverityCounts, uniqueTransformSeverityCounts(tempSeverityCounts));
-    findOrAddStigById(uniqueFinding.Stigs[0].id, uniqueTransformCounts(tempCounts), uniqueTransformSeverityCounts(tempSeverityCounts),);
+    findOrAddStigById(
+      uniqueFinding.Stigs[0].id,
+      uniqueTransformCounts(tempCounts),
+      uniqueTransformSeverityCounts(tempSeverityCounts),
+    );
 
     tempCounts = initializeCounts();
     tempSeverityCounts = initializeSeverityCounts();
@@ -483,38 +488,40 @@ export default defineEventHandler(async (event) => {
     Not_Applicable: 0,
     Not_Reviewed: 0,
   };
-  const revName = `rev${boundary.PolicyDocument?.version}`;
-  const revision = await ControlRevision.findOne({ where: { name: revName } });
+  const revName = boundary.PolicyDocument?.version ? `rev${boundary.PolicyDocument.version}` : null;
+
+  const revision = revName ? await ControlRevision.findOne({ where: { name: revName } }) : null;
+
   if (!revision) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: `Control Revision ${revName} not found.`,
-    });
+    logger.error(`Control Revision ${revName ?? "undefined"} not found. Skipping SCTM.`);
   }
-  let controlRecords = await ControlRecord.findAll({
-    where: {
-      BoundaryId,
-      ControlRevisionId: revision.id,
-    },
-    include: [
-      {
-        model: ControlRecordItem,
-        attributes: ["ComplianceStatusId", "AuditControlStatusId", "AssessorControlStatusId"],
-      },
-      {
-        model: ControlFamily,
-        attributes: ["id", "name"],
+
+  let controlRecords = revision
+    ? await ControlRecord.findAll({
+        where: {
+          BoundaryId,
+          ControlRevisionId: revision.id,
+        },
         include: [
           {
-            model: Control,
-            include: [ControlNumber],
-            limit: 1,
+            model: ControlRecordItem,
+            attributes: ["ComplianceStatusId", "AuditControlStatusId", "AssessorControlStatusId"],
+          },
+          {
+            model: ControlFamily,
+            attributes: ["id", "name"],
+            include: [
+              {
+                model: Control,
+                include: [ControlNumber],
+                limit: 1,
+              },
+            ],
           },
         ],
-      },
-    ],
-  });
-  if (!controlRecords.length && boundary?.PolicyDocument?.version) {
+      })
+    : [];
+  if (revision && !controlRecords.length && boundary?.PolicyDocument?.version) {
     // Create new ControlRecords
     await createControlRecords(boundary.id, boundary.PolicyDocument.version);
 
@@ -654,7 +661,11 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  function findOrAddStigById(id: number, findings: FindingCounts, severities: SeverityCounts): void {
+  function findOrAddStigById(
+    id: number,
+    findings: FindingCounts,
+    severities: SeverityCounts,
+  ): void {
     const existingSystem = boundaryView.find((stigEntry) => stigEntry.id === id);
 
     if (existingSystem) {
@@ -690,10 +701,7 @@ export default defineEventHandler(async (event) => {
     target[key] = ((target[key] || 0) + value) as T[keyof T];
   }
 
-  function addSeverityCounts(
-    target: SeverityCounts,
-    source: SeverityCounts,
-  ) {
+  function addSeverityCounts(target: SeverityCounts, source: SeverityCounts) {
     target.catI += source.catI;
     target.catII += source.catII;
     target.catIII += source.catIII;
