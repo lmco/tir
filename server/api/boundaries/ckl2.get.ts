@@ -10,6 +10,7 @@ import { zipDirectoryContents } from "~/server/utils/zip";
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
+  const groupValue = query.groupValue === "host" ? "host" : "system";
   if (!query.BoundaryId) {
     throw createError({
       statusCode: 400,
@@ -17,6 +18,8 @@ export default defineEventHandler(async (event) => {
     });
   }
   const checkResult = await userCheck(event, undefined, query.BoundaryId?.toString(), undefined);
+
+  const ignoreOverrides = query.IgnoreOverrides === "true";
 
   let singleStigPerCkl = false;
 
@@ -68,7 +71,9 @@ export default defineEventHandler(async (event) => {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error) {
-    logger.error(`Unabled to create dir in ${config.temp_folder}`);
+    logger.error(
+      `Unabled to create dirPath dir ${dirPath} in ${config.temp_folder} error msg -> ${error}`,
+    );
     throw createError({
       statusCode: 503,
       statusMessage: "Unable to create Checklist.",
@@ -76,12 +81,14 @@ export default defineEventHandler(async (event) => {
   }
 
   for (const system of boundary.Systems ?? []) {
-    const systemPath = path.join(dirPath, system.name);
+    const folderName = groupValue === "host" ? system.hostName || system.name : system.name;
+
+    const systemPath = path.join(dirPath, folderName);
 
     try {
       await fs.mkdir(systemPath, { recursive: true });
     } catch (error) {
-      logger.error(`Unabled to create dir in ${dirPath}`);
+      logger.error(`Unabled to create systemPath dir ${systemPath} error msg -> ${error}`);
       throw createError({
         statusCode: 503,
         statusMessage: "Unable to create Checklist.",
@@ -89,7 +96,7 @@ export default defineEventHandler(async (event) => {
     }
 
     if (singleStigPerCkl) {
-      const cklStrings = await buildCklString(system.id, true);
+      const cklStrings = await buildCklString(system.id, true, ignoreOverrides);
 
       for (const cklString of cklStrings) {
         const jsonCkl = await parseStringPromise(cklString, { explicitArray: false });
@@ -103,13 +110,13 @@ export default defineEventHandler(async (event) => {
         await fs.writeFile(`${systemPath}/${cklStigId}.ckl`, cklString);
       }
     } else {
-      const cklString = await buildCklString(system.id, false);
+      const cklString = await buildCklString(system.id, false, ignoreOverrides);
       await fs.writeFile(`${systemPath}/${system.name}.ckl`, cklString);
     }
   }
 
   const zipFileName = `${config.temp_folder}/${boundary.name}.zip`;
-  zipDirectoryContents(dirPath, zipFileName);
+  await zipDirectoryContents(dirPath, zipFileName);
 
   const data: Buffer = await fs.readFile(zipFileName);
   const stream = new Readable();
