@@ -43,7 +43,7 @@ export class LocalAuthProvider extends AuthProvider {
     return { sessionId, userId: user.id };
   }
 
-  async validateToken(token: string) {
-    throw new Error("Token validation not implemented for LocalAuthProvider");
+  validateToken(_token: string): Promise<any> {
+    return Promise.reject(new Error("Token validation not implemented for LocalAuthProvider"));
   }
 }
