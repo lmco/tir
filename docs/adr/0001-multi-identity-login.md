@@ -8,6 +8,9 @@ decision-makers: Mark Rivera, Amndeep Singh Mann
 
 ## Context and Problem Statement
 
+This ADR takes as its starting point main after lmco/tir#14, which adds the
+OAuth provider and the per-account sign-in method.
+
 Every provider resolves the login to a User by email:
 `User.findOne({ where: { email } })` in local, LDAP, OIDC, and OAuth. Email is
 the implicit link between a person and their account. That has two
@@ -50,7 +53,9 @@ A User may hold several login Identities, of which at most one is a local
 Identity, so there is one password per User as today. Credentials and external
 keys move off the User row onto a one-to-many Identity table. The external key
 is the email for the local credential, the subject for OIDC, the DN for LDAP,
-and the provider's own account id for OAuth. Login resolves
+and the provider's own account id for OAuth. The local key is always the
+User's `primaryEmail` and follows it when it changes, as the login email does
+today. Login resolves
 `provider + external key -> Identity -> User`, replacing today's
 `User.findOne({ where: { email } })`, where the provider is the configured
 provider instance, so two OIDC or OAuth providers never share keys. The User
@@ -66,16 +71,32 @@ it, LDAP binds with the DN, OAuth keeps no account id, and each then finds the
 User by email. So the migration cannot fill the keys in, and without a bridge
 every existing external user would arrive after the cutover as an unrecognised
 identity. The migration therefore creates a local Identity for each User with a
-stored password and, for each User whose sign-in method (lmco/tir#14) is an
-external one, a placeholder Identity for that method holding the User's email
-at migration and no key. The first successful login through a provider of that
-method whose email equals the placeholder's records the presented key and the
-provider instance on it. A placeholder is bound once, is not affected by later
-changes to `primaryEmail`, and is never bound by a login whose email differs.
-This is the one place a login is tied to a User by email. It does no more than
-today's login does, it happens once per existing account, and it is filling in
-an Identity the User already holds, so the rules below on changing an Admin's
-Identities do not apply to it.
+stored password and, for each User whose sign-in method is an external one, a
+placeholder Identity for that method holding the User's email at migration and
+no key. The sign-in method is the `creationMethod` column as lmco/tir#14
+maintains it.
+
+Nothing records which provider instance an account uses, so a placeholder is
+pinned to the instances of its method that are configured when the migration
+runs, which is a single instance in most deployments. The first successful
+login through a pinned instance whose email equals the placeholder's records
+the presented key and that instance on it. A provider added later can never
+bind a placeholder. A placeholder is not affected by later changes to
+`primaryEmail` and is never bound by a login whose email differs. This is the
+one place a login is tied to a User by email. The bind fills in an Identity the
+User already holds, so the rules below on changing an Admin's Identities do not
+apply to it.
+
+Today's lookup checks the email again on every login. The bind keeps the first
+key it sees, so a wrong first assertion does not correct itself. An Admin can
+reset an Identity the migration created to its unbound placeholder from the
+user editor, with an audit entry, and the next matching login through a pinned
+instance binds it again. The reset keeps the Identity's stored claims and
+Admin-mapped mark until that login replaces them. It is allowed on an Admin's
+Identity too, because it is the only recovery for an Admin whose single
+external login was bound to the wrong key. It hands the resetting Admin
+nothing, since the bind still goes to whoever the pinned provider reports under
+that address.
 
 Linking is explicit. Apart from that one-time bind, an identity TIR does not
 recognise is never attached to a User because its email matches one. A person
@@ -140,8 +161,9 @@ would lift every rule here.
 
 The rule across linking, the user editor, and merge (ADR 0002) is that the
 Identities of an Admin, or of a User holding an Admin-mapped Identity, change
-only after that person signs in to the account. Setting the password of an
-existing local Identity is outside that rule. An Admin can set another Admin's
+only after that person signs in to the account. Resetting a migrated Identity
+to its placeholder, described above, is outside that rule. So is setting the
+password of an existing local Identity. An Admin can set another Admin's
 local password, as today, and so sign in as them. That stays because it is how
 an Admin locked out of a local Identity recovers. Phase 1 does change one case.
 Today an Admin can give a User who has only external logins a local password
@@ -180,8 +202,10 @@ Otherwise the granted role is applied at each login.
   that belongs to someone else. That person's first login is then rejected
   until an Admin corrects the address. Nothing is linked, which is the point of
   refusing email as a proof.
-- Bad, because the migration bind trusts a matching email once per existing
-  external account, as every login does today.
+- Bad, because the migration bind trusts a matching email from a pinned
+  provider and keeps the key it sees. A wrong first bind locks the real person
+  out until an Admin resets the Identity, and where several instances of a
+  method are configured at migration any of them can bind.
 - Bad, because an Admin who can attach an Identity can attach one of their own
   to any non-Admin User and sign in as that User. An Admin can already do that
   today by giving the account a local password, including for a User with only
@@ -220,14 +244,20 @@ Otherwise the granted role is applied at each login.
   password verifies against the PHC field stored on the Identity.
 - After the migration, the first login of an existing external user binds
   their placeholder Identity and later logins resolve by key. A placeholder is
-  not bound a second time, nor by a login whose email differs from the one it
-  holds.
+  not bound a second time, by a login whose email differs from the one it
+  holds, or through a provider instance that was not configured at migration.
+- An Admin resetting an Identity the migration created returns it to an
+  unbound placeholder and writes an audit entry, also when the Identity
+  belongs to an Admin. The next matching login through a pinned instance binds
+  it. An Identity the migration did not create cannot be reset.
 - An unknown identity is attached to a User only after the person signs in
   with one of that User's existing credentials, or when an Admin attaches it,
   and never because the email addresses match. No confirmation email links a
   login.
 - A first-time login whose email matches an existing User creates no account
   and attaches nothing until that sign-in happens.
+- Changing a User's `primaryEmail` changes the email their local Identity
+  signs in with, and the old address no longer signs in.
 - An Admin attaching or removing an Identity writes an audit entry.
 - From the user editor, attaching an Identity to or removing one from an Admin,
   or a User holding an Identity whose stored claims map to Admin, is rejected.

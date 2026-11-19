@@ -79,12 +79,15 @@ in as it and confirm.
 The source's Identities move to the target, so every login that reached the
 source now reaches the target. The one exception follows from ADR 0001 allowing
 a User a single local Identity. When both hold one the target's is kept and the
-source's is dropped, and the preview says so. Members are unioned, with the
-target's role winning on shared-node conflicts. The merge preview lists
-conflicts and allows per-role override. Eval and milestone assignments and
-notifications are reassigned and de-duped; source tokens are revoked and
-sessions invalidated; the target wins on preferences; the source is
-soft-retired with a `mergedIntoId`; the merge is audit-logged at `notice`.
+source's is dropped, and the preview says so. When only the source holds one it
+moves and takes the target's `primaryEmail` as its key, so the person signs in
+with the target's address and the source's password, and the preview says that
+too. Members are unioned, with the target's role winning on shared-node
+conflicts. The merge preview lists conflicts and allows per-role override. Eval
+and milestone assignments and notifications are reassigned and de-duped; source
+tokens are revoked and sessions invalidated; the target wins on preferences;
+the source is soft-retired with a `mergedIntoId`; the merge is audit-logged at
+`notice`.
 
 The retired source keeps its `primaryEmail`. A first login whose email matches
 it is asked to sign in with one of the target's credentials, as ADR 0001 does
@@ -128,6 +131,8 @@ second account.
 - After the merge every Identity the source held resolves to the target, and
   the source holds none. When both had a local Identity the source's is gone,
   its email and password no longer sign in, and the preview showed that.
+- When only the source had a local Identity, the target signs in locally with
+  its own `primaryEmail` and the source's password.
 - The source is left soft-retired with `mergedIntoId` set and its tokens and
   sessions invalidated.
 - An audit entry at `notice` records source, target, and any overrides.
