@@ -1773,11 +1773,8 @@ const getSystemNameById = (systemId: number | string) => {
 };
 
 async function handleImportFiles(){
-  const zipInput = document.getElementById("uploadResultsZip") as HTMLInputElement | null;
-  const multiInput = document.getElementById("uploadResultsMultiple") as HTMLInputElement | null;
-
-  const files = zipInput?.files?.length ? zipInput.files : multiInput?.files ?? null;
-  await analyzeImportFromFiles(files);
+  const input = document.getElementById("uploadResultsMultiple") as HTMLInputElement | null;
+  await analyzeImportFromFiles(input?.files ?? null);
 }
 
 async function handleImportFolder(){
@@ -1987,10 +1984,16 @@ const filteredSystems = computed(() =>
 const nessusSystems = computed<SystemEntry[]>(() => {
   const systems = summary.value?.systemView ?? [];
 
-  const selectedIds = selectedSystem.value
-    .flat()
-    .filter((system): system is SystemEntry => system !== null)
-    .map((system) => system.id);
+  const selectedIds = selectedSystem.value.flatMap((selected, folderIndex) =>
+    selected
+      .filter(
+        (system, fileIndex) =>
+          needsInput.value[folderIndex]?.files?.[fileIndex]?.itemType === "nessus" &&
+          system !== null,
+      )
+      .filter((system): system is SystemEntry => system !== null)
+      .map((system) => system.id),
+  );
 
   return systems
     .filter((system) => !selectedIds.includes(system.id))

@@ -529,12 +529,20 @@ const extractLibrary = async (sourceZip: string, outputDirectory: string): Promi
         }
         if (path.extname(entry.fileName).toLowerCase() === ".json") {
           const outPath = path.join(temp, path.basename(entry.fileName));
-          zip.openReadStream(entry, async (err, readStream) => {
-            if (err || !readStream) return reject(err);
+          zip.openReadStream(entry, (err, readStream) => {
+            if (err || !readStream) {
+              reject(err ?? new Error("Unable to read ZIP entry"));
+              return;
+            }
+
             const writeStream = fs.createWriteStream(outPath);
-            await pipeline(readStream, writeStream);
-            fileList.push(outPath);
-            zip.readEntry();
+
+            pipeline(readStream, writeStream)
+              .then(() => {
+                fileList.push(outPath);
+                zip.readEntry();
+              })
+              .catch(reject);
           });
         } else {
           zip.readEntry();
