@@ -68,14 +68,40 @@ added, enabled or repointed later can never bind it. The first successful login
 through a pinned provider whose email equals the placeholder's records the
 presented key and that provider on it, and while a key is stored no other login
 binds it. A placeholder is not affected by later changes to `primaryEmail` and
-is never bound by a login whose email differs. This is the one place a login is
-tied to a User by email. The bind fills in an Identity the User already holds,
-so the ADR 0001 rule on changing an Admin's Identities does not apply to it.
-When no provider of an account's method is enabled at migration, no placeholder
-is created. The migration logs every account it leaves without an Identity, so
-the operator can see who will need help signing in. That is an account with no
+is never bound by a login whose email differs. Where the provider's
+verified-email setting from lmco/tir#14 is on, an address the provider does not
+report as verified binds nothing. This is the one place a login is tied to a
+User by email. The bind fills in an Identity the User already holds, so the ADR
+0001 rule on changing an Admin's Identities does not apply to it. When no
+provider of an account's method is enabled at migration, no placeholder is
+created. The migration logs every account it leaves without an Identity, so the
+operator can see who will need help signing in. That is an account with no
 stored password whose method either has no enabled provider or is Local, which
 ADR 0004 allows after a switch to Local until a password is set.
+
+An email must never name two accounts at a login. An address held by a
+placeholder is reserved for as long as the placeholder exists, bound or not,
+because a reset can unbind it again. Another User cannot take it as
+`primaryEmail` (ADR 0001), an Admin cannot attach a placeholder whose email is
+another User's `primaryEmail`, and no placeholder of another User can hold it.
+One person may hold placeholders at several providers under the same address. A
+retired merge source's address counts as its target's here, so it is reserved
+against everyone else. The migration cannot create an overlap, because each
+placeholder starts with its own User's unique email. Should one exist all the
+same, no placeholder binds. Where the email is another User's `primaryEmail`
+the login is asked to sign in to that User, as ADR 0001 does for any match, and
+where placeholders of two Users hold it the login is rejected. No action these
+ADRs allow produces that state, so it is a defect. An Admin releases it in the
+user editor only on an account the ADR 0001 Admin rule does not protect, by
+attaching a corrected placeholder and removing the colliding one. The
+placeholder of an Admin, or of a User holding an Admin-mapped Identity, is not
+changed until that person signs in.
+
+A placeholder that a merge moved to the target (ADR 0002) stops binding on an
+email match, because the merge has widened what that login would reach. A
+login whose email matches it is asked to sign in with one of the target's
+credentials, and that sign-in binds it. This stays true of that placeholder
+for good, so a reset later does not reopen the email match.
 
 Today's lookup checks the email again on every login. The bind keeps the first
 key it sees, so a wrong first assertion does not correct itself. An Admin can
@@ -91,16 +117,17 @@ Identity that began as a placeholder can be reset. A local Identity cannot, nor
 can an external one its owner connected while signed in, and a reset leaves the
 User's local password as it is. The reset is allowed on an Admin's Identity
 too, because it is the only recovery for an Admin whose single external login
-was bound to the wrong key. It hands the resetting Admin nothing, since the
-bind still goes to whoever a pinned provider reports under that address.
+was bound to the wrong key. It hands the resetting Admin nothing they control,
+since the bind still goes to whoever a pinned provider reports under that
+address.
 
 An Admin cannot know a person's subject or DN in advance, so attaching an
 external Identity under ADR 0001 means choosing a provider and entering the
 person's email there. That creates an unbound placeholder pinned to that one
 provider, which binds at the first login through it whose email matches, under
-the same rules as a migration placeholder, the reset included. With the create
-switch off, this is how the person's first login through their provider reaches
-the account the Admin made.
+the same rules as a migration placeholder, the reset and the reserved address
+included. With the create switch off, this is how the person's first login
+through their provider reaches the account the Admin made.
 
 Stored claims begin with Phase 1, so an external Identity has none until it
 first signs in after the migration. The migration therefore marks every
@@ -142,6 +169,14 @@ binds, as a migration placeholder of an Admin is.
 - Bad, because a stored password that ADR 0004 kept only as a fallback after a
   switch away from Local becomes a lasting local Identity, which stays until
   its owner removes it.
+- Bad, because an address held by a placeholder cannot be used as anyone
+  else's `primaryEmail` for as long as that Identity exists, also after its
+  owner has moved to another address.
+- Bad, because a person whose unbound placeholder moved in a merge has to sign
+  in with one of the target's credentials once before that login works.
+- Bad, because a reset sends the bind back to whoever a pinned provider
+  reports under the placeholder's address, which the provider may have given
+  to someone else since the first bind.
 - Bad, because two actions now sit outside the rule that an Admin's Identities
   change only after that Admin signs in: the reset and the no-Identity attach.
 
@@ -168,6 +203,14 @@ binds, as a migration placeholder of an Admin is.
 - An Admin attaching an external Identity enters a provider and an email,
   which creates an unbound placeholder pinned to that provider. It binds at
   the first login through that provider with that email and through no other.
+- Attaching a placeholder whose email is another User's `primaryEmail`, or the
+  email of another User's placeholder, bound or not, is rejected. A retired
+  merge source's address is open only to its target. A login whose email
+  matches an unbound placeholder and another User's `primaryEmail` binds
+  nothing. One User may hold placeholders at several providers under one
+  address.
+- A placeholder that a merge moved is bound only after a sign-in with one of
+  the target's credentials, before and after a reset.
 - A placeholder Identity of a User who was an Admin at the migration counts as
   Admin-mapped until the login that binds it, also when that User has been
   demoted in between.
