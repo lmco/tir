@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-11-19
+date: 2026-11-20
 decision-makers: Mark Rivera, Amndeep Singh Mann
 ---
 
@@ -57,10 +57,16 @@ and the provider's own account id for OAuth. The local key is always the
 User's `primaryEmail` and follows it when it changes, as the login email does
 today. Login resolves
 `provider + external key -> Identity -> User`, replacing today's
-`User.findOne({ where: { email } })`, where the provider is the configured
-provider instance, so two OIDC or OAuth providers never share keys. The User
-keeps a single `primaryEmail` for display and notifications. It stays unique
-across Users, as email is today.
+`User.findOne({ where: { email } })`. The provider is identified by what it
+points at, not by its config id, because the admin screen reuses an id after a
+delete and an entry can be saved over with a different server. Its identity is
+the issuer URL and client id for OIDC, the server URL and base DN for LDAP, and
+the provider type and base URL for OAuth. Two providers never share keys, and a
+config entry repointed at a different server is a different provider whose
+logins do not resolve to the old Identities. The User keeps a single
+`primaryEmail` for display and notifications, which is today's `email` column
+under the name this ADR uses for it. It stays unique across Users, as email is
+today.
 
 Phase 1 lands as one change: a single migration introduces Identity and moves
 the credentials onto it, and all four providers switch to it together, rather
@@ -73,30 +79,46 @@ every existing external user would arrive after the cutover as an unrecognised
 identity. The migration therefore creates a local Identity for each User with a
 stored password and, for each User whose sign-in method is an external one, a
 placeholder Identity for that method holding the User's email at migration and
-no key. The sign-in method is the `creationMethod` column as lmco/tir#14
-maintains it.
+no key. The sign-in method is the account's single method under lmco/tir ADR
+0003, which keeps it in the `creationMethod` column, changes it only through
+the method switch, and refuses a login through any other method. Without that
+rule the column would only say how the account was created. ADR 0003 also
+keeps a stored password working as a local fallback after a switch away from
+Local, until the first login through the new method clears it, so a local
+Identity for every stored password carries over what works at the cutover.
 
-Nothing records which provider instance an account uses, so a placeholder is
-pinned to the instances of its method that are configured when the migration
-runs, which is a single instance in most deployments. The first successful
-login through a pinned instance whose email equals the placeholder's records
-the presented key and that instance on it. A provider added later can never
-bind a placeholder. A placeholder is not affected by later changes to
-`primaryEmail` and is never bound by a login whose email differs. This is the
-one place a login is tied to a User by email. The bind fills in an Identity the
-User already holds, so the rules below on changing an Admin's Identities do not
-apply to it.
+Nothing records which provider an account uses, so a placeholder is pinned to
+the providers of its method that are enabled when the migration runs, a single
+one in most deployments. The pin is a snapshot of each such provider's identity
+as defined above, stored on the placeholder row, so a provider that is added,
+enabled or repointed later can never bind it. The first successful login
+through a pinned provider whose email equals the placeholder's records the
+presented key and that provider on it, and while a key is stored no other login
+binds it. A placeholder is not affected by later changes to `primaryEmail` and
+is never bound by a login whose email differs. This is the one place a login is
+tied to a User by email. The bind fills in an Identity the User already holds,
+so the rules below on changing an Admin's Identities do not apply to it. When
+no provider of an account's method is enabled at migration, no placeholder is
+created and the migration logs the account, so the operator can see who will
+need help signing in.
 
 Today's lookup checks the email again on every login. The bind keeps the first
 key it sees, so a wrong first assertion does not correct itself. An Admin can
-reset an Identity the migration created to its unbound placeholder from the
-user editor, with an audit entry, and the next matching login through a pinned
-instance binds it again. The reset keeps the Identity's stored claims and
-Admin-mapped mark until that login replaces them. It is allowed on an Admin's
-Identity too, because it is the only recovery for an Admin whose single
-external login was bound to the wrong key. It hands the resetting Admin
-nothing, since the bind still goes to whoever the pinned provider reports under
-that address.
+reset a bound placeholder from the user editor, with an audit entry. The reset
+clears the key, the bound provider and the claims the binding login stored,
+marks the Identity Admin-mapped if the migration had marked it or if the
+claims being cleared mapped to Admin, ends the sessions opened through that
+Identity, and cancels a pending merge the User is part of
+(ADR 0002). The next matching login through a pinned provider then binds it
+again. The reset does not restore a global role the wrong bind changed. On a
+provider with group mappings the right login re-syncs it, and otherwise an
+Admin sets it. Only an Identity that began as a placeholder can be reset. A
+local Identity cannot, nor can an external one its owner connected while signed
+in, and a reset leaves the User's local password as it is.
+The reset is allowed on an Admin's Identity too, because it is the only
+recovery for an Admin whose single external login was bound to the wrong key.
+It hands the resetting Admin nothing, since the bind still goes to whoever a
+pinned provider reports under that address.
 
 Linking is explicit. Apart from that one-time bind, an identity TIR does not
 recognise is never attached to a User because its email matches one. A person
@@ -152,6 +174,26 @@ provider is the authority for claim-mapped roles. The promotion waits when
 another of the User's Identities grants a different role, as it does for any
 User whose Identities disagree. The action is audit-logged.
 
+An Admin cannot know a person's subject or DN in advance, so attaching an
+external Identity means choosing a provider and entering the person's email
+there. That creates an unbound placeholder pinned to that one provider, which
+binds at the first login through it whose email matches, under the same rules
+as a migration placeholder, the reset included. A local Identity is attached by
+setting a password. An account an Admin creates is given at least one Identity
+in one of these two ways, so with the create switch off the person's first
+login through their provider reaches the account the Admin made.
+
+One narrow case lifts the restriction on Admins. A live Admin who holds no
+Identity at all can have one attached by another Admin. Only the cutover
+produces that state, for an account with no stored password whose sign-in
+method had no enabled provider, because afterwards a User's last Identity
+cannot be removed. Disabling a provider or resetting a placeholder later does
+not produce it, since the placeholder stays on the account, and a retired merge
+source is not a live account. That person has never been able to sign in since
+the cutover, so the attach takes nothing from them that they could use. A
+placeholder attached this way is marked Admin-mapped until it binds, as a
+migration placeholder of an Admin is.
+
 Stored claims begin with Phase 1, so an external Identity has none until it
 first signs in after the migration. The migration therefore marks every
 placeholder Identity of a User who is an Admin at that point as Admin-mapped,
@@ -161,13 +203,15 @@ would lift every rule here.
 
 The rule across linking, the user editor, and merge (ADR 0002) is that the
 Identities of an Admin, or of a User holding an Admin-mapped Identity, change
-only after that person signs in to the account. Resetting a migrated Identity
-to its placeholder, described above, is outside that rule. So is setting the
-password of an existing local Identity. An Admin can set another Admin's
+only after that person signs in to the account. Three things are outside that
+rule: resetting a bound placeholder, attaching to an Admin who holds no
+Identity at all, both described above, and setting the password of an existing local
+Identity. An Admin can set another Admin's
 local password, as today, and so sign in as them. That stays because it is how
 an Admin locked out of a local Identity recovers. Phase 1 does change one case.
 Today an Admin can give a User who has only external logins a local password
-and with it a local login. Under this ADR that is attaching a local Identity and
+and with it a local login, under ADR 0003 by switching the account to Local
+first. Under this ADR that is attaching a local Identity and
 follows the attach rules above, so it is rejected for an Admin or a User
 holding an Admin-mapped Identity.
 
@@ -183,7 +227,9 @@ existing one keeps the role it has. A login that matches mapped groups for both
 roles is granted User, the lower of the two, as the providers decide today, and
 that single granted role is what "maps to Admin" means throughout this ADR.
 When a User holds Identities whose stored claims grant different roles, a login
-does not change the global role until the open question below is settled.
+does not change the global role until the open question below is settled. An
+Identity with no mapped claims, such as a local Identity or one from a provider
+with no group mappings, grants no role and does not count in that comparison.
 Otherwise the granted role is applied at each login.
 
 ### Consequences
@@ -204,8 +250,11 @@ Otherwise the granted role is applied at each login.
   refusing email as a proof.
 - Bad, because the migration bind trusts a matching email from a pinned
   provider and keeps the key it sees. A wrong first bind locks the real person
-  out until an Admin resets the Identity, and where several instances of a
-  method are configured at migration any of them can bind.
+  out until an Admin resets the Identity, and where several providers of a
+  method are enabled at migration any of them can bind.
+- Bad, because a wrong bind can demote an Admin or replace the Admin-mapped
+  mark before anyone notices, and until the reset the wrongly bound person
+  holds the account. The reset restores the mark and not the role.
 - Bad, because an Admin who can attach an Identity can attach one of their own
   to any non-Admin User and sign in as that User. An Admin can already do that
   today by giving the account a local password, including for a User with only
@@ -214,7 +263,9 @@ Otherwise the granted role is applied at each login.
 - Bad, because an Admin who loses every credential cannot be helped by
   attaching a new Identity. Another Admin resets their local password if they
   have a local Identity, and an Admin with only external logins recovers at the
-  provider.
+  provider. The exception is an Admin the cutover left with no Identity at
+  all. An Admin whose placeholder's providers are disabled later is not
+  covered and waits for a pinned provider to be enabled again.
 - Bad, because stored claims are those of an Identity's last login, so a User
   whose provider no longer maps them to Admin stays under the Admin rules until
   they sign in again. The same holds for the migration mark on a User who was
@@ -243,13 +294,27 @@ Otherwise the granted role is applied at each login.
   no remaining `User.findOne({ where: { email } })` login path. The local
   password verifies against the PHC field stored on the Identity.
 - After the migration, the first login of an existing external user binds
-  their placeholder Identity and later logins resolve by key. A placeholder is
-  not bound a second time, by a login whose email differs from the one it
-  holds, or through a provider instance that was not configured at migration.
-- An Admin resetting an Identity the migration created returns it to an
-  unbound placeholder and writes an audit entry, also when the Identity
-  belongs to an Admin. The next matching login through a pinned instance binds
-  it. An Identity the migration did not create cannot be reset.
+  their placeholder Identity and later logins resolve by key. While a key is
+  stored no login binds the placeholder again. An unbound placeholder is not
+  bound by a login whose email differs from the one it holds, or through a
+  provider outside its pin, including one that reuses a pinned provider's
+  config id with a different issuer, server or client.
+- No placeholder is created for an account whose method had no enabled
+  provider at migration, and the migration logs that account.
+- An Admin resetting a bound placeholder clears its key, bound provider and
+  stored claims, marks it Admin-mapped if the migration had or if the cleared
+  claims mapped to Admin,
+  ends that Identity's sessions, cancels a pending merge the User is in, and
+  writes an audit entry. It does not change the global role or any password.
+  The next matching login through a pinned provider binds it. A local
+  Identity, or an external one that did not begin as a placeholder, cannot be
+  reset.
+- An Admin attaching an external Identity enters a provider and an email,
+  which creates an unbound placeholder pinned to that provider. It binds at
+  the first login through that provider with that email and through no other.
+  An account an Admin creates holds at least one Identity.
+- A login through a config entry that was repointed at a different issuer or
+  server does not resolve to Identities recorded under the old one.
 - An unknown identity is attached to a User only after the person signs in
   with one of that User's existing credentials, or when an Admin attaches it,
   and never because the email addresses match. No confirmation email links a
@@ -262,7 +327,9 @@ Otherwise the granted role is applied at each login.
 - From the user editor, attaching an Identity to or removing one from an Admin,
   or a User holding an Identity whose stored claims map to Admin, is rejected.
   So is an Admin setting a local password for such a User who has no local
-  Identity.
+  Identity. The one exception is an attach to a live Admin who holds no
+  Identity at all. Disabling a provider or resetting a placeholder does not
+  open that exception, because the placeholder remains.
 - Removing a User's last Identity is rejected. A signed-in user, Admin or not,
   can remove one of their own Identities from the profile page but not the
   last. Giving a User a second local Identity is rejected by every route.

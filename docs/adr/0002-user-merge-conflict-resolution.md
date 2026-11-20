@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-19
+date: 2026-11-20
 decision-makers: Mark Rivera, Amndeep Singh Mann
 ---
 
@@ -65,7 +65,8 @@ the merging Admin approved, nothing is committed and the merge goes back to
 that Admin. An Admin can cancel a pending merge and the source can decline it.
 A pending merge lapses if it is not confirmed within a period the feature issue
 sets, and a lapsed merge has to be requested again. A User can be the source or
-the target of only one pending merge at a time.
+the target of only one pending merge at a time. Resetting a placeholder
+Identity of either User (ADR 0001) also cancels it.
 
 An Admin merging their own account gives the proof by being signed in to it.
 This keeps the ADR 0001 rule that an Admin's identities never move without that
@@ -126,6 +127,8 @@ second account.
 - A pending merge does not commit on confirmation when the target no longer
   passes the target test or the preview has changed since the merging Admin
   approved it.
+- Resetting a placeholder Identity of the source or the target cancels a
+  pending merge between them.
 - A pending merge past its period cannot be confirmed, and a merge naming a
   User who is already in a pending merge is rejected.
 - After the merge every Identity the source held resolves to the target, and
