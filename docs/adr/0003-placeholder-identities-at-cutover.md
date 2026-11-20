@@ -1,0 +1,208 @@
+---
+status: proposed
+date: 2026-11-20
+decision-makers: Mark Rivera
+---
+
+# Existing logins cross the Identity cutover through placeholders bound at first login
+
+## Context and Problem Statement
+
+ADR 0001 moves login onto an Identity table resolved by provider and external
+key. Like ADR 0001, this ADR takes as its starting point main after
+lmco/tir#14.
+
+The external keys are not stored today. OIDC checks the subject and discards
+it, LDAP binds with the DN, OAuth keeps no account id, and each then finds the
+User by email. So the Phase 1 migration cannot fill the keys in, and without a
+bridge every existing external user would arrive after the cutover as an
+unrecognised identity. ADR 0001 would then ask each of them to sign in with an
+existing credential, which an account with only an external login does not
+have. The same gap exists whenever an Admin prepares a login for someone else,
+because an Admin cannot know a person's subject or DN in advance. How do
+existing accounts, and accounts an Admin prepares, get their external key?
+
+## Decision Drivers
+
+- No account that can sign in before the cutover may be locked out by it.
+- The bridge must not reopen linking by email match beyond the one login that
+  needs it.
+- A provider that did not exist at the cutover must not be able to claim an
+  existing account.
+- A wrong first assertion must be correctable, also for an Admin who has only
+  an external login.
+- The ADR 0001 rule that an Admin's Identities change only after that Admin
+  signs in should bend as little as possible.
+
+## Considered Options
+
+- No bridge: existing external logins arrive unrecognised and prove ownership
+  under ADR 0001.
+- Rebind by email: on the providers present at migration, keep honouring a
+  login that presents the account's email and let it replace the stored key.
+- Placeholder Identities bound once, with an Admin reset.
+
+## Decision Outcome
+
+Chosen option: "Placeholder Identities bound once, with an Admin reset",
+because it carries every working login across the cutover, trusts an email
+match for a single login instead of indefinitely, and leaves a recovery that
+does not depend on the person being able to sign in.
+
+The migration creates a local Identity for each User with a stored password
+and, for each User whose sign-in method is an external one, a placeholder
+Identity for that method holding the User's email at migration and no key. The
+sign-in method is the account's single method under ADR 0004, which keeps it
+in the `creationMethod` column, changes it only through the method switch, and
+refuses a login through any other method. Without that rule the column would
+only say how the account was created. ADR 0004 also keeps a stored password
+working as a local fallback after a switch away from Local, until the first
+login through the new method clears it, so a local Identity for every stored
+password carries over what works at the cutover.
+
+Nothing records which provider an account uses, so a placeholder is pinned to
+the providers of its method that are enabled when the migration runs, a single
+one in most deployments. The pin is a snapshot of each such provider's identity
+as ADR 0001 defines it, stored on the placeholder row, so a provider that is
+added, enabled or repointed later can never bind it. The first successful login
+through a pinned provider whose email equals the placeholder's records the
+presented key and that provider on it, and while a key is stored no other login
+binds it. A placeholder is not affected by later changes to `primaryEmail` and
+is never bound by a login whose email differs. This is the one place a login is
+tied to a User by email. The bind fills in an Identity the User already holds,
+so the ADR 0001 rule on changing an Admin's Identities does not apply to it.
+When no provider of an account's method is enabled at migration, no placeholder
+is created. The migration logs every account it leaves without an Identity, so
+the operator can see who will need help signing in. That is an account with no
+stored password whose method either has no enabled provider or is Local, which
+ADR 0004 allows after a switch to Local until a password is set.
+
+Today's lookup checks the email again on every login. The bind keeps the first
+key it sees, so a wrong first assertion does not correct itself. An Admin can
+reset a bound placeholder from the user editor, with an audit entry. The reset
+clears the key, the bound provider and the claims the binding login stored,
+marks the Identity Admin-mapped if it carried the mark before it was bound or
+if the claims being cleared mapped to Admin, ends the sessions opened through
+that Identity, and cancels a pending merge the User is part of (ADR 0002). The
+next matching login through a pinned provider then binds it again. The reset
+does not restore a global role the wrong bind changed. On a provider with group
+mappings the right login re-syncs it, and otherwise an Admin sets it. Only an
+Identity that began as a placeholder can be reset. A local Identity cannot, nor
+can an external one its owner connected while signed in, and a reset leaves the
+User's local password as it is. The reset is allowed on an Admin's Identity
+too, because it is the only recovery for an Admin whose single external login
+was bound to the wrong key. It hands the resetting Admin nothing, since the
+bind still goes to whoever a pinned provider reports under that address.
+
+An Admin cannot know a person's subject or DN in advance, so attaching an
+external Identity under ADR 0001 means choosing a provider and entering the
+person's email there. That creates an unbound placeholder pinned to that one
+provider, which binds at the first login through it whose email matches, under
+the same rules as a migration placeholder, the reset included. With the create
+switch off, this is how the person's first login through their provider reaches
+the account the Admin made.
+
+Stored claims begin with Phase 1, so an external Identity has none until it
+first signs in after the migration. The migration therefore marks every
+placeholder Identity of a User who is an Admin at that point as Admin-mapped,
+and the login that binds it replaces the mark with the claims the provider
+reports. Without the mark, demoting such an Admin before they next sign in
+would lift every Admin rule in ADR 0001.
+
+One narrow case lifts the ADR 0001 restriction on attaching to an Admin. A live
+Admin who holds no Identity at all can have one attached by another Admin. Only
+the cutover produces that state, for the accounts the migration logs as left
+without an Identity, because afterwards a User's last Identity cannot be
+removed. Disabling a provider or resetting a placeholder
+later does not produce it, since the placeholder stays on the account, and a
+retired merge source is not a live account. That person has never been able to
+sign in since the cutover, so the attach takes nothing from them that they
+could use. A placeholder attached this way is marked Admin-mapped until it
+binds, as a migration placeholder of an Admin is.
+
+### Consequences
+
+- Good, because every external login that works before the cutover works after
+  it without the person doing anything.
+- Good, because after the first bind the stable key decides, so an address the
+  provider later gives to someone else does not inherit the account.
+- Bad, because the bind trusts a matching email from a pinned provider and
+  keeps the key it sees. A wrong first bind locks the real person out until an
+  Admin resets the Identity, and where several providers of a method are
+  enabled at migration any of them can bind.
+- Bad, because a wrong bind can demote an Admin or replace the Admin-mapped
+  mark before anyone notices, and until the reset the wrongly bound person
+  holds the account. The reset restores the mark and not the role.
+- Bad, because the migration mark keeps a User who was an Admin at migration
+  under the Admin rules until their external Identity signs in, also after a
+  demotion.
+- Bad, because an Admin whose placeholder's providers are disabled after the
+  cutover is not covered by the no-Identity exception and waits for a pinned
+  provider to be enabled again.
+- Bad, because a stored password that ADR 0004 kept only as a fallback after a
+  switch away from Local becomes a lasting local Identity, which stays until
+  its owner removes it.
+- Bad, because two actions now sit outside the rule that an Admin's Identities
+  change only after that Admin signs in: the reset and the no-Identity attach.
+
+### Confirmation
+
+- After the migration, the first login of an existing external user binds
+  their placeholder Identity and later logins resolve by key. While a key is
+  stored no login binds the placeholder again. An unbound placeholder is not
+  bound by a login whose email differs from the one it holds, or through a
+  provider outside its pin, including one that reuses a pinned provider's
+  config id with a different issuer, server or client.
+- Every User with a stored password holds a local Identity after the
+  migration.
+- No placeholder is created for an account whose method had no enabled
+  provider at migration. The migration logs every account it leaves with no
+  Identity, including a Local account with no stored password.
+- An Admin resetting a bound placeholder clears its key, bound provider and
+  stored claims, marks it Admin-mapped if it carried the mark before it was
+  bound or if the cleared claims mapped to Admin, ends that Identity's
+  sessions, cancels a pending merge the User is in, and writes an audit entry.
+  It does not change the global role or any password. The next matching login
+  through a pinned provider binds it. A local Identity, or an external one
+  that did not begin as a placeholder, cannot be reset.
+- An Admin attaching an external Identity enters a provider and an email,
+  which creates an unbound placeholder pinned to that provider. It binds at
+  the first login through that provider with that email and through no other.
+- A placeholder Identity of a User who was an Admin at the migration counts as
+  Admin-mapped until the login that binds it, also when that User has been
+  demoted in between.
+- Attaching an Identity to a live Admin who holds no Identity at all is
+  accepted. Disabling a provider or resetting a placeholder does not open
+  that exception, because the placeholder remains.
+
+## Pros and Cons of the Options
+
+### No bridge
+
+- Good, because it adds no rule to ADR 0001.
+- Bad, because an account with only an external login has no existing
+  credential to prove ownership with, so it is locked out, and for an Admin no
+  other Admin can help.
+
+### Rebind by email
+
+- Good, because it is today's lookup limited to the providers present at
+  migration, and a wrong assertion corrects itself at the next login.
+- Bad, because email stays the effective login key of every migrated account
+  for as long as the account exists, which is what ADR 0001 sets out to end.
+
+### Placeholder Identities bound once, with an Admin reset
+
+- Good, because an email match is trusted for one login per account.
+- Good, because the same mechanism serves an Admin preparing a login for
+  someone else.
+- Bad, because it needs the reset action, the pin snapshot and the Admin-mapped
+  mark.
+
+## More Information
+
+Bridge for Phase 1 of ADR 0001. Reads the sign-in method that ADR 0004 defines.
+
+Recording the external key and the provider at each login ahead of Phase 1
+would let the migration fill in real keys for accounts that sign in before the
+cutover and leave placeholders only for the rest. That is not decided here.
