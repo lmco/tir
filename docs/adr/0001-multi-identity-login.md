@@ -53,10 +53,9 @@ A User may hold several login Identities, of which at most one is a local
 Identity, so there is one password per User as today. Credentials and external
 keys move off the User row onto a one-to-many Identity table. The external key
 is the email for the local credential, the subject for OIDC, the DN for LDAP,
-and the provider's own account id for OAuth. The local key is always the
-User's `primaryEmail` and follows it when it changes, as the login email does
-today. Login resolves
-`provider + external key -> Identity -> User`, replacing today's
+and the provider's own account id for OAuth. The local key is always the User's
+`primaryEmail` and follows it when it changes, as the login email does today.
+Login resolves `provider + external key -> Identity -> User`, replacing today's
 `User.findOne({ where: { email } })`. The provider is identified by what it
 points at, not by its config id, because the admin screen reuses an id after a
 delete and an entry can be saved over with a different server. Its identity is
@@ -66,7 +65,9 @@ config entry repointed at a different server is a different provider whose
 logins do not resolve to the old Identities. The User keeps a single
 `primaryEmail` for display and notifications, which is today's `email` column
 under the name this ADR uses for it. It stays unique across Users, as email is
-today.
+today. An address held by another User's placeholder Identity (ADR 0003) is
+reserved in the same way for as long as that Identity exists, bound or not, and
+cannot be taken as a `primaryEmail`.
 
 Phase 1 lands as one change: a single migration introduces Identity and moves
 the credentials onto it, and all four providers switch to it together, rather
@@ -86,8 +87,13 @@ address. A person who cannot sign in asks an Admin to attach the Identity.
 Each external provider has a "create accounts on first login" switch, on by
 default for existing and new providers, which is today's behaviour.
 "Self-registration" means only the local sign-up form (mitre/tir#170) and has
-no bearing on external providers. What happens when an unrecognised identity
-signs in:
+no bearing on external providers. A login that ADR 0003 binds to a placeholder
+is not an unrecognised identity. Where the same email also matches another
+User's `primaryEmail`, no placeholder binds and the first case below applies. A
+retired merge source's address counts as its target's (ADR 0002), so a
+placeholder the merge moved to that target is not such a collision. That login
+is asked to sign in to the target, and the sign-in binds the placeholder. What
+happens when an unrecognised identity signs in:
 
 - Its email matches the `primaryEmail` of an existing User, whatever the switch
   is set to: the person is asked to connect the login by signing in with one of
@@ -130,10 +136,14 @@ Identities disagree. The action is audit-logged.
 
 An Admin attaches an external Identity by choosing a provider and entering the
 person's email there, which creates a placeholder that binds at the person's
-first login through that provider (ADR 0003). A local Identity is attached by
-setting a password. An account an Admin creates is given at least one Identity
-in one of these two ways. That holds when the account is created as an Admin
-too, since a new account has no owner yet whose logins could be taken.
+first login through that provider (ADR 0003). The attach is rejected when that
+email is another User's `primaryEmail` or is held by another User's placeholder
+Identity, bound or not. Where the provider's verified-email setting is on, a
+placeholder binds only on an address the provider reports as verified (ADR
+0003). A local Identity is attached by setting a password. An account an Admin
+creates is given at least one Identity in one of these two ways. That holds
+when the account is created as an Admin too, since a new account has no owner
+yet whose logins could be taken.
 
 Stored claims are the ones an Identity's last login reported. An Identity is
 Admin-mapped when its stored claims map to Admin, or while it carries an
@@ -247,6 +257,12 @@ Identities disagree changes no role.
   and attaches nothing until that sign-in happens.
 - Changing a User's `primaryEmail` changes the email their local Identity
   signs in with, and the old address no longer signs in.
+- Changing a `primaryEmail` to an address held by another User's placeholder
+  Identity, bound or not, is rejected, and so is attaching a placeholder whose
+  email is another User's `primaryEmail`. A login whose email matches both an
+  unbound placeholder and another live User's `primaryEmail` binds nothing and
+  is asked to sign in to that other User. A placeholder a merge moved is not
+  that case: its login is asked to sign in to the target, which binds it.
 - An Admin attaching or removing an Identity writes an audit entry.
 - From the user editor, attaching an Identity to or removing one from an Admin,
   or a User holding an Admin-mapped Identity, is rejected.
