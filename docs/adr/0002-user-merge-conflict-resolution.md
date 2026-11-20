@@ -44,10 +44,10 @@ Chosen option: "Target-wins union", because it preserves every boundary the
 person could reach while keeping a deterministic default, with an escape hatch
 (per-role override in the preview) for the cases an Admin wants to change.
 
-The target (surviving User) must be a non-Admin and must hold no Identity whose
-stored provider claims map to Admin, the same test ADR 0001 applies in the user
+The target (surviving User) must be a non-Admin and must hold no Admin-mapped
+Identity as ADR 0001 defines it, the same test ADR 0001 applies in the user
 editor, so a merge never adds logins to an account that is already an Admin or
-whose stored claims already map to Admin. The source may be any Role and its
+already holds an Admin-mapped Identity. The source may be any Role and its
 global Role is discarded. When the source holds an Admin-mapped Identity, that
 Identity moves with the rest, so the target is promoted at its next login
 through it, unless the target also holds an Identity that grants User, in which
@@ -55,23 +55,23 @@ case ADR 0001 leaves the role unchanged until its open question on disagreeing
 Identities is settled. A promoted target is the case the open question under
 More Information covers.
 
-When the source is an Admin, or holds an Identity whose stored provider claims
-map to Admin, the merge needs that person's own proof. It stays pending and
-changes nothing until they sign in with one of the source's credentials and
-confirm it, and the confirmation shows the target and the Identities the target
-already holds. On confirmation the target test runs again and the preview is
-recomputed. If the target no longer passes, or the preview differs from the one
-the merging Admin approved, nothing is committed and the merge goes back to
-that Admin. An Admin can cancel a pending merge and the source can decline it.
-A pending merge lapses if it is not confirmed within a period the feature issue
-sets, and a lapsed merge has to be requested again. A User can be the source or
-the target of only one pending merge at a time. Resetting a placeholder
-Identity of either User (ADR 0001) also cancels it.
+When the source is an Admin, or holds an Admin-mapped Identity, the merge needs
+that person's own proof. It stays pending and changes nothing until they sign
+in with one of the source's credentials and confirm it, and the confirmation
+shows the target and the Identities the target already holds. On confirmation
+the target test runs again and the preview is recomputed. If the target no
+longer passes, or the preview differs from the one the merging Admin approved,
+nothing is committed and the merge goes back to that Admin. An Admin can cancel
+a pending merge and the source can decline it. A pending merge lapses if it is
+not confirmed within a period the feature issue sets, and a lapsed merge has to
+be requested again. A User can be the source or the target of only one pending
+merge at a time. Resetting a placeholder Identity of either User (ADR 0003)
+also cancels it.
 
 An Admin merging their own account gives the proof by being signed in to it.
 This keeps the ADR 0001 rule that an Admin's identities never move without that
 Admin proving ownership, and a sign-in is the only proof ADR 0001 accepts. The
-stored-claims test covers a source demoted just before the merge, whose claims
+Admin-mapped test covers a source demoted just before the merge, whose claims
 would promote the target at its next login. The proof is as strong as a sign-in
 and no stronger. ADR 0001 leaves an Admin able to set another Admin's local
 password, so an Admin who does that to a source with a local Identity can sign
@@ -119,16 +119,16 @@ second account.
 
 ### Confirmation
 
-- Merge rejects an Admin target, and a target holding an Identity whose stored
-  claims map to Admin.
-- Merging a source that is an Admin, or that holds an Identity whose stored
-  claims map to Admin, changes nothing until that person signs in with one of
-  the source's credentials and confirms.
+- Merge rejects an Admin target, and a target holding an Admin-mapped
+  Identity.
+- Merging a source that is an Admin, or that holds an Admin-mapped Identity,
+  changes nothing until that person signs in with one of the source's
+  credentials and confirms.
 - A pending merge does not commit on confirmation when the target no longer
   passes the target test or the preview has changed since the merging Admin
   approved it.
-- Resetting a placeholder Identity of the source or the target cancels a
-  pending merge between them.
+- Resetting a placeholder Identity of the source or the target (ADR 0003)
+  cancels a pending merge between them.
 - A pending merge past its period cannot be confirmed, and a merge naming a
   User who is already in a pending merge is rejected.
 - After the merge every Identity the source held resolves to the target, and
