@@ -312,9 +312,9 @@ Phase 1 of a two-phase effort; Phase 2 is the merge (ADR 0002). Decided in
 mitre/tir discussion 197. Related: mitre/tir#171 (multiple SSO methods at once), mitre/tir#170 (local
 registration), mitre/tir#183. Until this lands, ADR 0004 holds an interim rule
 of one sign-in method per account and ships with lmco/tir#14. ADR 0003 covers
-how existing logins cross the Phase 1 cutover. It is proposed and reviewed in
-its own pull request, and this ADR relies on it for the placeholder an Admin
-attach creates and for the placeholder's Admin-mapped mark.
+how existing logins cross the Phase 1 cutover. It is proposed in lmco/tir#52,
+and this ADR relies on it for the placeholder an Admin attach creates and for
+the placeholder's Admin-mapped mark.
 
 A possible later addition, behind its own option: with the create switch off,
 hold an unknown person's account pending Admin approval instead of rejecting
