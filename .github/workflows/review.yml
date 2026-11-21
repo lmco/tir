@@ -214,7 +214,8 @@ jobs:
                 + (if .dropped > 0 then ["- \(.dropped) not read, over the 8000 character cap"] else [] end)
                 | select(length > 0)
                 | "\n\nMaintainer comments read:", .[]' "$R/selected.json"
-            printf '\n\n<sub>Reviewed %s with Claude. Automated first pass, not a substitute for human review. Reply here and a human will follow up.</sub>\n' "${HEAD_SHA:0:7}"
+            printf '\n\n<sub>Reviewed %s with Claude. Automated first pass, not a substitute for human review. Reply here and a human will follow up. Maintainer comments are read on the next run, which a push starts or `gh workflow run review.yml --repo %s -f pr=%s`.</sub>\n' \
+              "${HEAD_SHA:0:7}" "$GITHUB_REPOSITORY" "$PR_NUMBER"
           } > "$R/comment.md"
 
           current=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
