@@ -80,11 +80,11 @@ provider does not report as verified binds nothing. This is the one place a
 login is tied to a User by email. The bind fills in an Identity the User
 already holds, so the ADR 0001 rule on changing an Admin's Identities does not
 apply to it. When no provider of an account's method is enabled at migration,
-no placeholder is created. The migration logs every account it leaves without
-an Identity, so the operator can see who will need help signing in. That is an
-account with no stored password whose method either has no enabled provider or
-is Local, which ADR 0004 allows after a switch to Local until a password is
-set.
+no placeholder is created. The migration logs and flags every account it leaves
+without an Identity, so the operator can see who will need help signing in.
+That is an account with no stored password whose method either has no enabled
+provider or is Local, which ADR 0004 allows after a switch to Local until a
+password is set.
 
 An email must never name two accounts at a login. An address held by a
 placeholder is reserved for as long as the placeholder exists, bound or not,
@@ -129,11 +129,12 @@ The reset does not restore a global role the wrong bind changed. On a provider
 with group mappings the right login re-syncs it, and otherwise an Admin sets
 it. Only an Identity that began as a placeholder can be reset. A local Identity
 cannot, nor can an external one its owner connected while signed in, and a
-reset leaves the User's local password as it is. The reset is allowed on an
-Admin's Identity too, because it is the only recovery for an Admin whose single
-external login was bound to the wrong key. It hands the resetting Admin nothing
-they control as long as the pinned provider decides which address a login
-reports, since the bind goes to whoever it reports under that address.
+reset leaves a local password as it is unless it was set in a session described
+in the next paragraph. The reset is allowed on an Admin's Identity too, because
+it is the only recovery for an Admin whose single external login was bound to
+the wrong key. It hands the resetting Admin nothing they control as long as the
+pinned provider decides which address a login reports, since the bind goes to
+whoever it reports under that address.
 
 A wrongly bound person holds the account until the reset and can use it as its
 owner would. The reset therefore also undoes what it mechanically can. It
@@ -163,20 +164,22 @@ placeholder mark lasts until this placeholder itself binds, so an external
 login that has reported no claims yet is not treated as an ordinary User's.
 
 One narrow case lifts the ADR 0001 restriction on attaching to an Admin. A live
-Admin who holds no Identity at all can have one attached by another Admin. The
-cutover produces that state, for the accounts the migration logs as left
-without an Identity. Afterwards a User's last working Identity cannot be
-removed (ADR 0001), so the one other route is an Admin removing a non-Admin's
-Identities at a deleted provider and then promoting the account. That gives the
-attaching Admin nothing new, since they could have attached a login before the
-promotion. Disabling or removing a provider, or resetting a placeholder, does
-not produce it later, since removing a provider leaves the Identities recorded
-under it on their accounts and the placeholder stays where it is. For the ADR
-0001 rule on deleting a provider, an unbound placeholder counts as an Identity
-at every provider in its pin, and a retired merge source is not a live account.
-In either case the person has no login that works, so the attach takes nothing
-from them that they could use. A placeholder attached this way is marked
-Admin-mapped until it binds, as a migration placeholder of an Admin is.
+Admin the cutover left with no Identity at all can have one attached by another
+Admin. The migration flags the accounts it logs as left without an Identity,
+and the exception applies only to a flagged account that still holds none, so
+no later action opens it. An Admin who comes to hold no Identity another way,
+such as a non-Admin whose Identities at a deleted provider were removed before
+a promotion, is not covered by this exception. It holds no Identity for a
+demotion to mark, so another Admin can demote it and attach a login as for any
+non-Admin, which takes a login from nobody. Disabling or removing a provider,
+or resetting a placeholder, does not produce it later, since removing a
+provider leaves the Identities recorded under it on their accounts and the
+placeholder stays where it is. For the ADR 0001 rule on deleting a provider, an
+unbound placeholder counts as an Identity at every provider in its pin, and a
+retired merge source is not a live account. A flagged account has had no login
+since the cutover, so the attach takes nothing from its owner that they could
+use. A placeholder attached this way is marked Admin-mapped until it binds, as
+a migration placeholder of an Admin is.
 
 ### Consequences
 
@@ -256,11 +259,12 @@ Admin-mapped until it binds, as a migration placeholder of an Admin is.
 - An Admin resetting a bound placeholder clears its key, bound provider and
   stored claims, keeps any Admin-mapped mark it carries, a demotion mark
   included, restores the placeholder mark it had before it was bound, marks
-  it if the cleared claims mapped to Admin, ends that Identity's
-  sessions, cancels a pending merge the User is in, and writes an audit entry.
-  It does not change the global role or any password. The next matching login
-  through a pinned provider binds it. A local Identity, or an external one
-  that did not begin as a placeholder, cannot be reset.
+  it if the cleared claims mapped to Admin, ends that Identity's sessions,
+  cancels a pending merge the User is in, and writes an audit entry. It does
+  not change the global role, and it changes no password except one set in a
+  session opened through the placeholder since it bound. The next matching
+  login through a pinned provider binds it. A local Identity, or an external
+  one that did not begin as a placeholder, cannot be reset.
 - An Admin attaching an external Identity enters a provider and an email,
   which creates an unbound placeholder pinned to that provider. It binds at
   the first login through that provider with that email and through no other.
@@ -284,9 +288,11 @@ Admin-mapped until it binds, as a migration placeholder of an Admin is.
 - A placeholder Identity of a User who was an Admin at the migration counts as
   Admin-mapped until the login that binds it, also when that User has been
   demoted in between.
-- Attaching an Identity to a live Admin who holds no Identity at all is
-  accepted. Disabling or removing a provider, or resetting a
-  placeholder, does not open that exception, because the Identity remains.
+- Attaching an Identity to a live Admin is accepted only for an account the
+  migration flagged as left without an Identity and that still holds none.
+  An Admin with no Identity that the migration did not flag is refused, and
+  disabling or removing a provider or resetting a placeholder does not open
+  the exception.
 
 ## Pros and Cons of the Options
 
