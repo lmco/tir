@@ -73,15 +73,14 @@ needs the provider's secret entered again, as lmco/tir#14 requires, and writes
 an audit entry. A provider that is meant to be a different one is deleted and
 added anew.
 
-Deleting a provider ends the login of everyone who signs in through it. The
-delete dialog says how many Users that is and names every User the user editor
-is closed for, meaning an Admin or a User holding an Admin-mapped Identity,
-whose working Identities are all at that provider. The delete is refused until
-each of them holds a working Identity elsewhere, meaning a local one or one at
-a provider that still exists, because no Admin could restore their access. Any
-other User left without a working login is helped by an Admin attaching a new
-one. The Identities of a deleted provider stay on their accounts and no longer
-resolve.
+Deleting a provider ends the login of everyone who signs in through it, and the
+delete warns of that. It is refused while it would strand a User the user
+editor is closed for, meaning an Admin or a User holding an Admin-mapped
+Identity whose working Identities are all at that provider. Each of them first
+needs a working Identity elsewhere, meaning a local one or one at a provider
+that still exists, because no Admin could restore their access. Any other User
+left without a working login is helped by an Admin attaching a new one. The
+Identities of a deleted provider stay on their accounts and no longer resolve.
 
 The User keeps a single `primaryEmail` for display and notifications, which is
 today's `email` column under the name this ADR uses for it. It stays unique
@@ -145,15 +144,16 @@ account, or one holding an Admin-mapped Identity, is never taken over through
 an identity an Admin attached, and the user editor cannot take an Admin-mapped
 Identity off one User and attach it to another. Such an Identity moves only by
 a merge its holder signs in to confirm (ADR 0002). A User's last working
-Identity cannot be removed, so no account is left that nobody can sign in to.
-Working has the meaning given for deleting a provider, so an Identity at a
-deleted provider does not count. The one exception is a merge source, which ADR
-0002 retires with no Identities. Re-sync still applies to an attached Identity,
-under the role rules below. If its provider claims map to Admin, the User is
-promoted at the next login, exactly as that identity would receive Admin on a
-new account, because the provider is the authority for claim-mapped roles. The
-promotion waits when another of the User's Identities grants a different role,
-as it does for any User whose Identities disagree. The action is audit-logged.
+Identity cannot be removed, so removing an Identity never leaves an account
+that nobody can sign in to. Working has the meaning given for deleting a
+provider, so an Identity at a deleted provider does not count. The one
+exception is a merge source, which ADR 0002 retires with no Identities. Re-sync
+still applies to an attached Identity, under the role rules below. If its
+provider claims map to Admin, the User is promoted at the next login, exactly
+as that identity would receive Admin on a new account, because the provider is
+the authority for claim-mapped roles. The promotion waits when another of the
+User's Identities grants a different role, as it does for any User whose
+Identities disagree. The action is audit-logged.
 
 An Admin attaches an external Identity by choosing a provider and entering the
 person's email there, which creates a placeholder that binds at the person's
@@ -286,7 +286,7 @@ Identities disagree changes no role.
   to the same Identities, and the edit writes an audit entry. A provider added
   after a delete has a new identifier and resolves to none of the old
   Identities, also when it reuses the config id.
-- Deleting a provider shows how many Users sign in through it and is refused
+- Deleting a provider warns that its Users lose that login and is refused
   while every working Identity of an Admin, or of a User holding an
   Admin-mapped Identity, is at that provider. An Identity at a provider that
   was deleted earlier does not count as working.
@@ -294,8 +294,9 @@ Identities disagree changes no role.
   with one of that User's existing credentials, or when an Admin attaches it,
   and never because the email addresses match. No confirmation email links a
   login.
-- A first-time login whose email matches an existing User creates no account
-  and attaches nothing until that sign-in happens.
+- A first-time login by an unrecognised identity whose email matches an
+  existing User creates no account and attaches nothing until that sign-in
+  happens.
 - Changing a User's `primaryEmail` changes the email their local Identity
   signs in with, and the old address no longer signs in.
 - Changing a `primaryEmail` to an address held by another User's placeholder

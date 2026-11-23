@@ -136,9 +136,10 @@ second account.
   cancels a pending merge between them.
 - A pending merge past its period cannot be confirmed, and a merge naming a
   User who is already in a pending merge is rejected.
-- After the merge every Identity the source held resolves to the target, and
-  the source holds none. When both had a local Identity the source's is gone,
-  its email and password no longer sign in, and the preview showed that.
+- After the merge every external Identity the source held resolves to the
+  target, and the source holds none. When both had a local Identity the
+  source's is gone, its email and password no longer sign in, and the preview
+  showed that.
 - An unbound placeholder the merge moved to the target is not bound by a
   login on its email alone. That login binds it only after a sign-in with one
   of the target's credentials, also after a later reset.
