@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-11-20
+date: 2026-11-23
 decision-makers: Mark Rivera, Amndeep Singh Mann
 ---
 
@@ -14,9 +14,9 @@ OAuth provider and the per-account sign-in method.
 Every provider resolves the login to a User by email:
 `User.findOne({ where: { email } })` in local, LDAP, OIDC, and OAuth. Email is
 the implicit link between a person and their account. That has two
-consequences. If
-two providers happen to carry the same email, they collapse onto the same User
-by coincidence of the address, not by any deliberate link. If they carry
+consequences. If two providers happen to carry the same email, they collapse
+onto the same User by coincidence of the address, not by any deliberate link.
+If they carry
 different emails, each provider lands on (or creates) a separate User, and there
 is no way to tell TIR those accounts are the same person. So a person cannot
 deliberately link identities that do not share an email, and the separate
@@ -133,8 +133,8 @@ attached is held to the same gate when it first signs in.
 
 A signed-in user can connect a further login, including one with a different
 email, from their profile page, and can remove one of their own Identities
-there, except the last. Turning the switch off asks the Admin to confirm that
-first-time users of that provider will be rejected.
+there, except the last working one. Turning the switch off asks the Admin to
+confirm that first-time users of that provider will be rejected.
 
 An Admin can also attach an Identity to a User, or remove one, from the user
 editor. This covers a person who cannot prove ownership themselves, such as a
@@ -144,15 +144,16 @@ and must hold no Admin-mapped Identity, a term defined below. So an Admin
 account, or one holding an Admin-mapped Identity, is never taken over through
 an identity an Admin attached, and the user editor cannot take an Admin-mapped
 Identity off one User and attach it to another. Such an Identity moves only by
-a merge its holder signs in to confirm (ADR 0002). A User's last Identity
-cannot be removed, so no account is left that nobody can sign in to. The one
-exception is a merge source, which ADR 0002 retires with no Identities. Re-sync
-still applies to an attached Identity, under the role rules below. If its
-provider claims map to Admin, the User is promoted at the next login, exactly
-as that identity would receive Admin on a new account, because the provider is
-the authority for claim-mapped roles. The promotion waits when another of the
-User's Identities grants a different role, as it does for any User whose
-Identities disagree. The action is audit-logged.
+a merge its holder signs in to confirm (ADR 0002). A User's last working
+Identity cannot be removed, so no account is left that nobody can sign in to.
+Working has the meaning given for deleting a provider, so an Identity at a
+deleted provider does not count. The one exception is a merge source, which ADR
+0002 retires with no Identities. Re-sync still applies to an attached Identity,
+under the role rules below. If its provider claims map to Admin, the User is
+promoted at the next login, exactly as that identity would receive Admin on a
+new account, because the provider is the authority for claim-mapped roles. The
+promotion waits when another of the User's Identities grants a different role,
+as it does for any User whose Identities disagree. The action is audit-logged.
 
 An Admin attaches an external Identity by choosing a provider and entering the
 person's email there, which creates a placeholder that binds at the person's
@@ -299,10 +300,13 @@ Identities disagree changes no role.
   signs in with, and the old address no longer signs in.
 - Changing a `primaryEmail` to an address held by another User's placeholder
   Identity, bound or not, is rejected, and so is attaching a placeholder whose
-  email is another User's `primaryEmail`. A login whose email matches both an
-  unbound placeholder and another live User's `primaryEmail` binds nothing and
-  is asked to sign in to that other User. A placeholder a merge moved is not
-  that case: its login is asked to sign in to the target, which binds it.
+  email is another User's `primaryEmail` or is held by another User's
+  placeholder Identity. Where a provider's verified-email setting is on, a
+  placeholder binds only on an address that provider reports as verified.
+- A login whose email matches both an unbound placeholder and another live
+  User's `primaryEmail` binds nothing and is asked to sign in to that other
+  User. A placeholder a merge moved is not that case: its login is asked to
+  sign in to the target, which binds it.
 - An Admin attaching or removing an Identity writes an audit entry.
 - From the user editor, attaching an Identity to or removing one from an Admin,
   or a User holding an Admin-mapped Identity, is rejected.
@@ -314,9 +318,11 @@ Identities disagree changes no role.
   signs in. Lowering your own role sets no demotion mark, so
   the user editor opens for the account only when it holds no other
   Admin-mapped Identity.
-- Removing a User's last Identity is rejected. A signed-in user, Admin or not,
+- Removing a User's last working Identity is rejected, and an Identity at a
+  deleted provider does not count as working. A signed-in user, Admin or not,
   can remove one of their own Identities from the profile page but not the
-  last. Giving a User a second local Identity is rejected by every route.
+  last working one. Giving a User a second local Identity is rejected by
+  every route.
 - With a provider's create switch off, a first-time login with no matching
   User creates no account, and turning the switch off asks for confirmation.
 - On a provider with group mappings, a login in no mapped group is rejected
