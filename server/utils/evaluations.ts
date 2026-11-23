@@ -16,6 +16,7 @@ import {
 import { uniqueTransform, addFindings } from "./findings";
 import { type FindingCounts } from "~/types/findings";
 import { StigOverride } from "~/db/models/stigOverride";
+import { catSeverityToStig, getHighestStigSeverity } from "~/utils/stig";
 
 export type EvalSummaryOverride = {
   type: string;
@@ -80,6 +81,7 @@ export type EvalSummaryStigData = {
   description: string;
   rule_id: string;
   severity: string;
+  effectiveSeverity: string;
   weight: number;
   rule_ver: string;
   rule_title: string;
@@ -118,6 +120,7 @@ export type EvalSummary = {
   StigData: EvalSummaryStigData[];
 };
 
+type SystemSeverity = { severity: string; systemId: number };
 const BLANK_EVALUATION_ITEM = {
   Office_Org: "",
   Resources_Required: "",
@@ -317,7 +320,7 @@ export async function getEvaluationSummary(
       if (stig?.StigData) {
         for (const stigData of stig?.StigData) {
           const systemFindingCounts: SystemFindingCounts[] = [];
-
+          const systemSeverities: SystemSeverity[] = [];
           const overrides = [];
 
           const newEvalItems: EvalSummaryEvaluationItem[] = [];
@@ -390,11 +393,29 @@ export async function getEvaluationSummary(
               };
 
               systemFindingCounts.push(newFindingCount);
+
+              const systemId = assessmentItem.Assessment?.System?.id;
+
+              if (systemId !== undefined) {
+                systemSeverities.push({
+                  severity: assessmentItem.severityOverride || stigData.severity,
+                  systemId,
+                });
+              }
             }
           }
 
           if (stigData.StigOverrides) {
             for (const override of stigData.StigOverrides ?? []) {
+              if (override.type === "severity") {
+                const systemSeverity = systemSeverities.find(
+                  (item) => item.systemId === override.System.id,
+                );
+
+                if (systemSeverity) {
+                  systemSeverity.severity = catSeverityToStig(override.value);
+                }
+              }
               const newOverride: EvalSummaryOverride = {
                 type: override.type,
                 value: override.value,
@@ -440,6 +461,10 @@ export async function getEvaluationSummary(
             description: stigData.description,
             rule_id: stigData.rule_id,
             severity: stigData.severity,
+            effectiveSeverity: getHighestStigSeverity(
+              systemSeverities.map((item) => item.severity),
+              stigData.severity,
+            ),
             weight: parseInt(stigData.weight, 10),
             rule_ver: stigData.rule_ver,
             rule_title: stigData.rule_title,
