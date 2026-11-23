@@ -102,7 +102,13 @@ ADRs allow produces that state, so it is a defect. An Admin releases it in the
 user editor only on an account the ADR 0001 Admin rule does not protect, by
 attaching a corrected placeholder and removing the colliding one. The
 placeholder of an Admin, or of a User holding an Admin-mapped Identity, is not
-changed until that person signs in.
+changed until that person signs in. A login that binds nothing can still
+present a reserved address, through a provider outside the pin, with an
+unverified address, or under a new key once the placeholder is bound. It is
+treated as ADR 0001 treats a match on `primaryEmail`: the person is asked to
+sign in with one of that User's existing credentials, and no account is created
+whatever the create switch says. Local sign-up with a reserved address is
+refused.
 
 A placeholder that a merge moved to the target (ADR 0002) stops binding on an
 email match, because the merge has widened what that login would reach. A
@@ -129,6 +135,16 @@ external login was bound to the wrong key. It hands the resetting Admin nothing
 they control as long as the pinned provider decides which address a login
 reports, since the bind goes to whoever it reports under that address.
 
+A wrongly bound person holds the account until the reset and can use it as its
+owner would. The reset therefore also undoes what it mechanically can. It
+removes every Identity that was connected in a session opened through the
+placeholder since it bound, ends the sessions opened through those, and clears
+a local password that was set in such a session, so that it has to be set
+again. It does not undo other edits made in those sessions, such as a changed
+`primaryEmail` or an Identity that was removed. The audit entry lists them for
+the resetting Admin, and the owner gets back in by binding the placeholder
+again.
+
 An Admin cannot know a person's subject or DN in advance, so attaching an
 external Identity under ADR 0001 means choosing a provider and entering the
 person's email there. That creates an unbound placeholder pinned to that one
@@ -147,17 +163,20 @@ placeholder mark lasts until this placeholder itself binds, so an external
 login that has reported no claims yet is not treated as an ordinary User's.
 
 One narrow case lifts the ADR 0001 restriction on attaching to an Admin. A live
-Admin who holds no Identity at all can have one attached by another Admin. Only
-the cutover produces that state, for the accounts the migration logs as left
-without an Identity, because afterwards a User's last Identity cannot be
-removed. Disabling or removing a provider, or resetting a placeholder, does not
-produce it later, since removing a provider leaves the Identities recorded
+Admin who holds no Identity at all can have one attached by another Admin. The
+cutover produces that state, for the accounts the migration logs as left
+without an Identity. Afterwards a User's last working Identity cannot be
+removed (ADR 0001), so the one other route is an Admin removing a non-Admin's
+Identities at a deleted provider and then promoting the account. That gives the
+attaching Admin nothing new, since they could have attached a login before the
+promotion. Disabling or removing a provider, or resetting a placeholder, does
+not produce it later, since removing a provider leaves the Identities recorded
 under it on their accounts and the placeholder stays where it is. For the ADR
 0001 rule on deleting a provider, an unbound placeholder counts as an Identity
 at every provider in its pin, and a retired merge source is not a live account.
-That person has never been able to sign in since the cutover, so the attach
-takes nothing from them that they could use. A placeholder attached this way is
-marked Admin-mapped until it binds, as a migration placeholder of an Admin is.
+In either case the person has no login that works, so the attach takes nothing
+from them that they could use. A placeholder attached this way is marked
+Admin-mapped until it binds, as a migration placeholder of an Admin is.
 
 ### Consequences
 
@@ -210,6 +229,9 @@ marked Admin-mapped until it binds, as a migration placeholder of an Admin is.
   with another User's, which no action these ADRs allow produces. Until either
   is seen in practice, an operator correcting the row in the database is the
   interim answer, and a real occurrence is the cue to design a proper one.
+- Bad, because a reset cannot give back what a wrongly bound person changed or
+  removed by hand. It lists those edits in the audit entry and leaves them to
+  the owner and the resetting Admin.
 - Bad, because two actions now sit outside the rule that an Admin's Identities
   change only after that Admin signs in: the reset and the no-Identity attach.
 
@@ -250,6 +272,13 @@ marked Admin-mapped until it binds, as a migration placeholder of an Admin is.
   address.
 - A login whose email differs from a placeholder's in letter case does not
   bind it, as it would not reach the account today.
+- A reset removes the Identities connected in sessions opened through the
+  placeholder since it bound, ends their sessions, clears a local password set
+  in such a session, and lists the other edits made in those sessions in its
+  audit entry.
+- A login that binds nothing and presents an address a placeholder holds
+  creates no account and is asked to sign in to that placeholder's User. Local
+  sign-up with such an address is refused.
 - A placeholder that a merge moved is bound only after a sign-in with one of
   the target's credentials, before and after a reset.
 - A placeholder Identity of a User who was an Admin at the migration counts as
