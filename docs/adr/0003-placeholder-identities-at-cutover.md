@@ -111,9 +111,10 @@ whatever the create switch says. Local sign-up with a reserved address is
 refused.
 
 A placeholder that a merge moved to the target (ADR 0002) stops binding on an
-email match, because the merge has widened what that login would reach. A
-login whose email matches it is asked to sign in with one of the target's
-credentials, and that sign-in binds it. This stays true of that placeholder
+email match, because the merge has widened what that login would reach. A login
+whose email matches it is asked to sign in with one of the target's
+credentials, and that sign-in binds it. The pin and the verified-email setting
+apply to that login as they do to any bind. This stays true of that placeholder
 for good, so a reset later does not reopen the email match.
 
 Today's lookup checks the email again on every login. The bind keeps the first
@@ -129,22 +130,26 @@ The reset does not restore a global role the wrong bind changed. On a provider
 with group mappings the right login re-syncs it, and otherwise an Admin sets
 it. Only an Identity that began as a placeholder can be reset. A local Identity
 cannot, nor can an external one its owner connected while signed in, and a
-reset leaves a local password as it is unless it was set in a session described
-in the next paragraph. The reset is allowed on an Admin's Identity too, because
-it is the only recovery for an Admin whose single external login was bound to
-the wrong key. It hands the resetting Admin nothing they control as long as the
-pinned provider decides which address a login reports, since the bind goes to
-whoever it reports under that address.
+reset leaves a local password as it is unless it was set since the bind, as the
+next paragraph describes. The reset is allowed on an Admin's Identity too,
+because it is the only recovery for an Admin whose single external login was
+bound to the wrong key. It hands the resetting Admin nothing they control as
+long as the pinned provider decides which address a login reports, since the
+bind goes to whoever it reports under that address.
 
 A wrongly bound person holds the account until the reset and can use it as its
 owner would. The reset therefore also undoes what it mechanically can. It
-removes every Identity that was connected in a session opened through the
-placeholder since it bound, ends the sessions opened through those, and clears
-a local password that was set in such a session, so that it has to be set
-again. It does not undo other edits made in those sessions, such as a changed
-`primaryEmail` or an Identity that was removed. The audit entry lists them for
-the resetting Admin, and the owner gets back in by binding the placeholder
-again.
+removes every Identity connected to the account since the bind, ends the
+account's sessions, revokes every API token created since the bind, and clears
+a local password set since the bind, so that it has to be set again. Identities
+that a merge moved onto the account since the bind are kept, because they are
+another person's logins and removing them would leave that person with none. It
+goes by time and not by which session made the change, because a wrongly bound
+person can connect a second login and carry on through that one. Anything the
+owner added in that window goes too and can be added again. It does not undo
+other edits made since the bind, such as a changed `primaryEmail` or an
+Identity that was removed. The audit entry lists them for the resetting Admin,
+and the owner gets back in by binding the placeholder again.
 
 An Admin cannot know a person's subject or DN in advance, so attaching an
 external Identity under ADR 0001 means choosing a provider and entering the
@@ -233,8 +238,14 @@ a migration placeholder of an Admin is.
   is seen in practice, an operator correcting the row in the database is the
   interim answer, and a real occurrence is the cue to design a proper one.
 - Bad, because a reset cannot give back what a wrongly bound person changed or
-  removed by hand. It lists those edits in the audit entry and leaves them to
-  the owner and the resetting Admin.
+  removed by hand, and it also removes what the owner added since the bind.
+  It lists the edits in the audit entry and leaves them to the owner and the
+  resetting Admin.
+- Bad, because an Admin who holds no Identity and was not flagged by the
+  migration can be demoted, given a login and promoted again by another
+  Admin. ADR 0001 stops that move by marking the Identities an account holds,
+  and such an account holds none. Nobody could sign in to it before, so no
+  login is taken.
 - Bad, because two actions now sit outside the rule that an Admin's Identities
   change only after that Admin signs in: the reset and the no-Identity attach.
 
@@ -259,12 +270,11 @@ a migration placeholder of an Admin is.
 - An Admin resetting a bound placeholder clears its key, bound provider and
   stored claims, keeps any Admin-mapped mark it carries, a demotion mark
   included, restores the placeholder mark it had before it was bound, marks
-  it if the cleared claims mapped to Admin, ends that Identity's sessions,
-  cancels a pending merge the User is in, and writes an audit entry. It does
-  not change the global role, and it changes no password except one set in a
-  session opened through the placeholder since it bound. The next matching
-  login through a pinned provider binds it. A local Identity, or an external
-  one that did not begin as a placeholder, cannot be reset.
+  it if the cleared claims mapped to Admin, cancels a pending merge the User
+  is in, and writes an audit entry. It does not change the global role, and
+  it changes no password except one set since the placeholder bound. The next
+  matching login through a pinned provider binds it. A local Identity, or an
+  external one that did not begin as a placeholder, cannot be reset.
 - An Admin attaching an external Identity enters a provider and an email,
   which creates an unbound placeholder pinned to that provider. It binds at
   the first login through that provider with that email and through no other.
@@ -276,10 +286,12 @@ a migration placeholder of an Admin is.
   address.
 - A login whose email differs from a placeholder's in letter case does not
   bind it, as it would not reach the account today.
-- A reset removes the Identities connected in sessions opened through the
-  placeholder since it bound, ends their sessions, clears a local password set
-  in such a session, and lists the other edits made in those sessions in its
-  audit entry.
+- A reset removes every Identity connected to the account since the
+  placeholder bound, including one connected through a login that was itself
+  connected since then, ends the account's sessions, revokes the API tokens
+  created since then, clears a local password set since then, and lists the
+  other edits made since then in its audit entry. Identities a merge moved
+  onto the account since then are kept.
 - A login that binds nothing and presents an address a placeholder holds
   creates no account and is asked to sign in to that placeholder's User. Local
   sign-up with such an address is refused.
