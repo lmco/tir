@@ -65,22 +65,26 @@ the providers of its method that are enabled when the migration runs, a single
 one in most deployments. The pin is the list of those providers' identifiers
 (ADR 0001), stored on the placeholder row, so a provider that is added or
 enabled later can never bind it. A pinned provider whose address is edited
-keeps its identifier and stays pinned. The first successful login through a
-pinned provider whose email equals the placeholder's records the presented key
-and that provider on it, and while a key is stored no other login binds it. A
-placeholder is not affected by later changes to `primaryEmail` and is never
-bound by a login whose email differs. Addresses are compared exactly, case
-included, as today's lookup and the unique `email` column do, here and for the
-reservation below. Where the provider's verified-email setting from lmco/tir#14
-is on, an address the provider does not report as verified binds nothing. This
-is the one place a login is tied to a User by email. The bind fills in an
-Identity the User already holds, so the ADR 0001 rule on changing an Admin's
-Identities does not apply to it. When no provider of an account's method is
-enabled at migration, no placeholder is created. The migration logs every
-account it leaves without an Identity, so the operator can see who will need
-help signing in. That is an account with no stored password whose method either
-has no enabled provider or is Local, which ADR 0004 allows after a switch to
-Local until a password is set.
+keeps its identifier and stays pinned. A provider that exists at the cutover
+carries its identifier already or is given one by the migration before any
+placeholder is pinned. The first successful login through a pinned provider
+whose email equals the placeholder's records the presented key and that
+provider on it, and while a key is stored no other login binds it. A login
+whose provider and key already resolve to an Identity signs in to that
+Identity's User and binds no placeholder. A placeholder is not affected by
+later changes to `primaryEmail` and is never bound by a login whose email
+differs. Addresses are compared exactly, case included, as today's lookup and
+the unique `email` column do, here and for the reservation below. Where the
+provider's verified-email setting from lmco/tir#14 is on, an address the
+provider does not report as verified binds nothing. This is the one place a
+login is tied to a User by email. The bind fills in an Identity the User
+already holds, so the ADR 0001 rule on changing an Admin's Identities does not
+apply to it. When no provider of an account's method is enabled at migration,
+no placeholder is created. The migration logs every account it leaves without
+an Identity, so the operator can see who will need help signing in. That is an
+account with no stored password whose method either has no enabled provider or
+is Local, which ADR 0004 allows after a switch to Local until a password is
+set.
 
 An email must never name two accounts at a login. An address held by a
 placeholder is reserved for as long as the placeholder exists, bound or not,
@@ -137,8 +141,10 @@ Stored claims begin with Phase 1, so an external Identity has none until it
 first signs in after the migration. The migration therefore marks every
 placeholder Identity of a User who is an Admin at that point as Admin-mapped,
 and the login that binds it replaces the mark with the claims the provider
-reports. Without the mark, demoting such an Admin before they next sign in
-would lift every Admin rule in ADR 0001.
+reports. ADR 0001's demotion mark also covers such an Admin when someone else
+demotes them, but it clears at their next sign-in through any Identity. The
+placeholder mark lasts until this placeholder itself binds, so an external
+login that has reported no claims yet is not treated as an ordinary User's.
 
 One narrow case lifts the ADR 0001 restriction on attaching to an Admin. A live
 Admin who holds no Identity at all can have one attached by another Admin. Only
@@ -213,6 +219,10 @@ marked Admin-mapped until it binds, as a migration placeholder of an Admin is.
   provider outside its pin, including one added after a pinned
   provider was deleted that reuses its config id. A pinned provider whose
   address was edited still binds it.
+- A login whose provider and key already resolve to an Identity binds no
+  placeholder, also when its email matches an unbound one.
+- Every provider that exists at the cutover has an identifier before any
+  placeholder is pinned to it.
 - Every User with a stored password holds a local Identity after the
   migration.
 - No placeholder is created for an account whose method had no enabled
