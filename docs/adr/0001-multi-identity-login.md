@@ -56,18 +56,37 @@ is the email for the local credential, the subject for OIDC, the DN for LDAP,
 and the provider's own account id for OAuth. The local key is always the User's
 `primaryEmail` and follows it when it changes, as the login email does today.
 Login resolves `provider + external key -> Identity -> User`, replacing today's
-`User.findOne({ where: { email } })`. The provider is identified by what it
-points at, not by its config id, because the admin screen reuses an id after a
-delete and an entry can be saved over with a different server. Its identity is
-the issuer URL and client id for OIDC, the server URL and base DN for LDAP, and
-the provider type and base URL for OAuth. Two providers never share keys, and a
-config entry repointed at a different server is a different provider whose
-logins do not resolve to the old Identities. The User keeps a single
-`primaryEmail` for display and notifications, which is today's `email` column
-under the name this ADR uses for it. It stays unique across Users, as email is
-today. An address held by another User's placeholder Identity (ADR 0003) is
-reserved in the same way for as long as that Identity exists, bound or not, and
-cannot be taken as a `primaryEmail`.
+`User.findOne({ where: { email } })`.
+
+Each provider has a unique identifier, assigned when it is created and never
+reused or changed. An Identity records that identifier and not the provider's
+address or its config id. Editing a provider keeps its identifier, so a change
+of address, of TLS or of client registration leaves every Identity working.
+Deleting a provider retires its identifier, and a provider added afterwards
+starts with no Identities even when it reuses the old config id, which the
+admin screen does after a delete. Two providers never share keys.
+
+Because the identifier survives an edit, an Admin who repoints a provider at a
+different identity provider keeps its Identities, those of Admins included.
+Whoever configures a provider already decides whom it vouches for. The change
+needs the provider's secret entered again, as lmco/tir#14 requires, and writes
+an audit entry. A provider that is meant to be a different one is deleted and
+added anew.
+
+Deleting a provider ends the login of everyone who signs in through it. The
+delete dialog says how many Users that is and names every User the user editor
+is closed for, meaning an Admin or a User holding an Admin-mapped Identity,
+whose Identities are all at that provider. The delete is refused until each of
+them holds an Identity elsewhere, because no Admin could restore their access.
+Any other User left without a working login is helped by an Admin attaching a
+new one. The Identities of a deleted provider stay on their accounts and no
+longer resolve.
+
+The User keeps a single `primaryEmail` for display and notifications, which is
+today's `email` column under the name this ADR uses for it. It stays unique
+across Users, as email is today. An address held by another User's placeholder
+Identity (ADR 0003) is reserved in the same way for as long as that Identity
+exists, bound or not, and cannot be taken as a `primaryEmail`.
 
 Phase 1 lands as one change: a single migration introduces Identity and moves
 the credentials onto it, and all four providers switch to it together, rather
@@ -167,11 +186,13 @@ existing local Identity is outside that rule. An Admin can set another Admin's
 local password, as today, and so sign in as them. That stays because it is how
 an Admin locked out of a local Identity recovers. ADR 0003 adds two exceptions
 for the cutover: resetting a bound placeholder, and attaching to an Admin the
-cutover left with no Identity at all. Phase 1 does change one case. Today an
-Admin can give a User who has only external logins a local password and with
-it a local login, under ADR 0004 by switching the account to Local first.
-Under this ADR that is attaching a local Identity and follows the attach rules
-above, so it is rejected for an Admin or a User holding an Admin-mapped
+cutover left with no Identity at all. Repointing a provider, described above,
+is a configuration change and is not counted here, though it has the same
+effect when the new server is a different one. Phase 1 does change one case.
+Today an Admin can give a User who has only external logins a local password
+and with it a local login, under ADR 0004 by switching the account to Local
+first. Under this ADR that is attaching a local Identity and follows the attach
+rules above, so it is rejected for an Admin or a User holding an Admin-mapped
 Identity.
 
 Provider claims are authoritative for the Identity they come from and are
@@ -200,6 +221,16 @@ Identities disagree changes no role.
 - Good, because credential storage is consolidated onto Identity as a single
   PHC-style encoded field (algorithm, iterations, salt, hash) instead of
   separate `password` and `salt` columns.
+- Good, because a provider can change its address or TLS without touching
+  anyone's login, and a provider added after a delete cannot inherit the old
+  one's logins.
+- Bad, because an Admin who can edit providers can repoint one at a server they
+  control and sign in as anyone who uses it, Admins included. That is true of
+  provider configuration today, and the secret prompt and the audit entry are
+  what make it visible.
+- Bad, because a provider cannot be deleted while it holds every Identity of
+  an Admin or of a User holding an Admin-mapped Identity, so retiring an
+  identity provider can wait on that person.
 - Bad, because all four providers must be rewired to resolve via Identity; this
   is a prerequisite phase (Phase 1) before user-merge.
 - Bad, because a role granted inside TIR to a user of a provider with group
@@ -247,8 +278,13 @@ Identities disagree changes no role.
   no remaining `User.findOne({ where: { email } })` login path. The local
   password verifies against the PHC field stored on the Identity.
 - An account an Admin creates holds at least one Identity.
-- A login through a config entry that was repointed at a different issuer or
-  server does not resolve to Identities recorded under the old one.
+- Editing a provider's address keeps its identifier, logins through it resolve
+  to the same Identities, and the edit writes an audit entry. A provider added
+  after a delete has a new identifier and resolves to none of the old
+  Identities, also when it reuses the config id.
+- Deleting a provider shows how many Users sign in through it and is refused
+  while every Identity of an Admin, or of a User holding an Admin-mapped
+  Identity, is at that provider.
 - An unknown identity is attached to a User only after the person signs in
   with one of that User's existing credentials, or when an Admin attaches it,
   and never because the email addresses match. No confirmation email links a
@@ -267,7 +303,8 @@ Identities disagree changes no role.
 - From the user editor, attaching an Identity to or removing one from an Admin,
   or a User holding an Admin-mapped Identity, is rejected.
   So is an Admin setting a local password for such a User who has no local
-  Identity. ADR 0003 holds the one exception.
+  Identity. ADR 0003 holds the one exception to the attach rule, an Admin the
+  cutover left with no Identity at all.
 - After another Admin lowers an Admin's role, attaching an Identity to that
   account or removing one from the user editor is rejected until that person
   signs in. Lowering your own role sets no demotion mark, so
