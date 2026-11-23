@@ -76,11 +76,12 @@ added anew.
 Deleting a provider ends the login of everyone who signs in through it. The
 delete dialog says how many Users that is and names every User the user editor
 is closed for, meaning an Admin or a User holding an Admin-mapped Identity,
-whose Identities are all at that provider. The delete is refused until each of
-them holds an Identity elsewhere, because no Admin could restore their access.
-Any other User left without a working login is helped by an Admin attaching a
-new one. The Identities of a deleted provider stay on their accounts and no
-longer resolve.
+whose working Identities are all at that provider. The delete is refused until
+each of them holds a working Identity elsewhere, meaning a local one or one at
+a provider that still exists, because no Admin could restore their access. Any
+other User left without a working login is helped by an Admin attaching a new
+one. The Identities of a deleted provider stay on their accounts and no longer
+resolve.
 
 The User keeps a single `primaryEmail` for display and notifications, which is
 today's `email` column under the name this ADR uses for it. It stays unique
@@ -184,8 +185,10 @@ Identities of an Admin, or of a User holding an Admin-mapped Identity, change
 only after that person signs in to the account. Setting the password of an
 existing local Identity is outside that rule. An Admin can set another Admin's
 local password, as today, and so sign in as them. That stays because it is how
-an Admin locked out of a local Identity recovers. ADR 0003 adds two exceptions
-for the cutover: resetting a bound placeholder, and attaching to an Admin the
+an Admin locked out of a local Identity recovers. Editing such a User's
+`primaryEmail` is outside the rule in the same way, since it changes the
+address their local Identity signs in with. ADR 0003 adds two exceptions for
+the cutover: resetting a bound placeholder, and attaching to an Admin the
 cutover left with no Identity at all. Repointing a provider, described above,
 is a configuration change and is not counted here, though it has the same
 effect when the new server is a different one. Phase 1 does change one case.
@@ -228,9 +231,9 @@ Identities disagree changes no role.
   control and sign in as anyone who uses it, Admins included. That is true of
   provider configuration today, and the secret prompt and the audit entry are
   what make it visible.
-- Bad, because a provider cannot be deleted while it holds every Identity of
-  an Admin or of a User holding an Admin-mapped Identity, so retiring an
-  identity provider can wait on that person.
+- Bad, because a provider cannot be deleted while it holds every working
+  Identity of an Admin or of a User holding an Admin-mapped Identity, so
+  retiring an identity provider can wait on that person.
 - Bad, because all four providers must be rewired to resolve via Identity; this
   is a prerequisite phase (Phase 1) before user-merge.
 - Bad, because a role granted inside TIR to a user of a provider with group
@@ -283,8 +286,9 @@ Identities disagree changes no role.
   after a delete has a new identifier and resolves to none of the old
   Identities, also when it reuses the config id.
 - Deleting a provider shows how many Users sign in through it and is refused
-  while every Identity of an Admin, or of a User holding an Admin-mapped
-  Identity, is at that provider.
+  while every working Identity of an Admin, or of a User holding an
+  Admin-mapped Identity, is at that provider. An Identity at a provider that
+  was deleted earlier does not count as working.
 - An unknown identity is attached to a User only after the person signs in
   with one of that User's existing credentials, or when an Admin attaches it,
   and never because the email addresses match. No confirmation email links a
