@@ -79,6 +79,28 @@ that would take the total past 8000 characters.
   actions that are not pinned, and anything that lets PR content reach a shell
   unquoted.
 
+## Decision records (docs/adr/**)
+
+An ADR records a decision and why it was made. It is not a specification.
+Anything it does not state is left to the feature issue that implements it.
+
+- Report a contradiction inside the ADR or with another ADR, whether that
+  one is accepted or added in the same pull request, a claim about the
+  current code or repository that is false, a decision or status a reader
+  cannot identify, and a consequence that the decision does not cause.
+- When a decision in one ADR defeats a guarantee that another ADR states,
+  report it as a contradiction and name both passages. The fix is to
+  correct or withdraw one of them. Do not propose a new rule that would
+  reconcile them.
+- An unstated edge case, an unspecified behaviour and a missing
+  implementation detail are not findings at any severity.
+- A finding here must be fixable by correcting or removing text that is
+  already in the ADR. If the only fix is a new sentence of required
+  behaviour, do not report it.
+- Required behaviour below the level of the decision, such as field rules,
+  error codes or endpoint shapes, is a consider: move it to the feature
+  issue.
+
 ## Pull request description
 
 - The Testing section must describe verification that was actually run:
