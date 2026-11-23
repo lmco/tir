@@ -311,8 +311,8 @@ Identities disagree changes no role.
 - From the user editor, attaching an Identity to or removing one from an Admin,
   or a User holding an Admin-mapped Identity, is rejected.
   So is an Admin setting a local password for such a User who has no local
-  Identity. ADR 0003 holds the one exception to the attach rule, an Admin the
-  cutover left with no Identity at all.
+  Identity. ADR 0003 holds the one exception for an existing account, an Admin
+  the cutover left with no Identity at all.
 - After another Admin lowers an Admin's role, attaching an Identity to that
   account or removing one from the user editor is rejected until that person
   signs in. Lowering your own role sets no demotion mark, so
