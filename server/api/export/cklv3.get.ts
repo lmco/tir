@@ -9,14 +9,12 @@ export default defineEventHandler(async (event) => {
   // Use query params to endpoint:
   //       singlestig   (true/false)
   //       boundary     (number)
-  //       IgnoreOverrides (true/false)
 
-  const ignoreOverrides = query.IgnoreOverrides === "true";
 
   if (checkResult.BoundaryRoleId) {
     const system = await System.findAll({ where: { BoundaryId: query.BoundaryId as number } });
     // Get Checklist Array
-    const checklists = await convertToCKL3(system, query.SingleStigPerCkl as string, ignoreOverrides);
+    const checklists = await convertToCKL3(system, query.SingleStigPerCkl as string);
 
     // Zip and return checklist array for boundary X
     const zip = new ZipFile();

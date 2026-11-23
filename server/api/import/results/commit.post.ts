@@ -80,6 +80,19 @@ export default defineEventHandler(async (event) => {
       statusMessage: "System does not belong to this Boundary.",
     });
   }
+    const updateSystemLastUpdate = async (systemIds: number[]) => {
+    if (!systemIds.length) return;
+
+    await System.update(
+      { lastUpdate: new Date().toISOString() },
+      {
+        where: {
+          id: [...new Set(systemIds)],
+          BoundaryId: analysis.boundaryId,
+        },
+      },
+    );
+  };
   for (const file of analyzableFiles) {
     if (typeof file.fileId !== "string" || !file.fileId) {
       throw createError({
@@ -96,12 +109,14 @@ export default defineEventHandler(async (event) => {
     if (file.ext === ".ckl") {
       if (!systemId) continue;
       await importChecklist(fileData, systemId);
+      await updateSystemLastUpdate([systemId]);
     }
 
     if (file.ext === ".cklb") {
       if (!systemId) continue;
       const checklistData: ChecklistV3 = JSON.parse(fileData);
       await importChecklistV3(checklistData, systemId);
+      await updateSystemLastUpdate([systemId]);
     }
 
     if (file.ext === ".nessus") {
@@ -127,6 +142,7 @@ export default defineEventHandler(async (event) => {
 
       if (nessusMatches.length > 0) {
         await importNessus(fileData, nessusMatches);
+        await updateSystemLastUpdate([systemId]);
       }
     }
 
@@ -134,6 +150,7 @@ export default defineEventHandler(async (event) => {
       if (!assignment?.systemId) continue;
       if (verifyXccdf(fileData)) {
         await importXccdf(fileData, systemId);
+        await updateSystemLastUpdate([systemId]);
       }
     }
   }
