@@ -199,7 +199,10 @@ marked Admin-mapped until it binds, as a migration placeholder of an Admin is.
 - Bad, because a provider that lets a person set an unverified address of
   their own choosing, with its verified-email setting off, lets whoever resets
   a placeholder bind it themselves. For such a provider the setting has to be
-  on before the reset is safe to use on an Admin's account.
+  on before the reset is safe to use on an Admin's account. LDAP has no such
+  setting, and the address is whatever the directory's mail attribute holds.
+  A reset on an LDAP-pinned placeholder is safe only where users cannot edit
+  that attribute themselves, which the operator has to confirm.
 - Bad, because two unlikely states leave an Admin whose only Identity is an
   unbound placeholder with no recovery inside TIR. One is an LDAP directory
   starting to supply a real address in place of the made-up one before that
