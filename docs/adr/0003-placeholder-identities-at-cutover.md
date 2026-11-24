@@ -12,18 +12,17 @@ ADR 0001 moves login onto an Identity table resolved by provider and external
 key. Like ADR 0001, this ADR takes as its starting point main after
 lmco/tir#14.
 
-Before lmco/tir#14 the external keys were not stored. OIDC checked the subject
-and discarded it, LDAP bound with the DN, OAuth kept no account id, and each
-then found the User by email. From lmco/tir#14 on, each external login records
-the provider's identifier and the key on the account (ADR 0004), but an
-account that has not signed in since has neither. So the Phase 1 migration
-cannot fill the keys in for those accounts, and without a bridge each of them
-would arrive after the cutover as an unrecognised identity. ADR 0001 would
-then ask each of them to sign in with an existing credential, which an account
-with only an external login does not have. The same gap exists whenever an
-Admin prepares a login for someone else, because an Admin cannot know a
-person's subject or DN in advance. How do existing accounts, and accounts an
-Admin prepares, get their external key?
+The external keys are not stored today. OIDC checks the subject and discards
+it, LDAP binds with the DN, OAuth keeps no account id, and each then finds the
+User by email. No release separates lmco/tir#14 from Phase 1, so no deployment
+has a period in which the keys could be collected first. So the Phase 1
+migration cannot fill the keys in, and without a bridge every existing
+external user would arrive after the cutover as an unrecognised identity. ADR
+0001 would then ask each of them to sign in with an existing credential, which
+an account with only an external login does not have. The same gap exists
+whenever an Admin prepares a login for someone else, because an Admin cannot
+know a person's subject or DN in advance. How do existing accounts, and
+accounts an Admin prepares, get their external key?
 
 ## Decision Drivers
 
@@ -50,14 +49,9 @@ because it carries every working login across the cutover, trusts an email
 match for a single login instead of indefinitely, and leaves a recovery that
 does not depend on the person being able to sign in.
 
-The migration creates a local Identity for each User with a stored password.
-For a User whose sign-in method is an external one and whose account carries
-a recorded provider identifier and key (ADR 0004), it creates an Identity
-bound to that provider and key, provided the provider still exists and is of
-the account's method. Such an account needs no placeholder and is never
-matched by email. For every other User whose sign-in method is an external
-one, it creates a placeholder Identity for that method holding the User's
-email at migration and no key. The
+The migration creates a local Identity for each User with a stored password
+and, for each User whose sign-in method is an external one, a placeholder
+Identity for that method holding the User's email at migration and no key. The
 sign-in method is the account's single method under ADR 0004, which keeps it
 in the `creationMethod` column, changes it only through the method switch, and
 refuses a login through any other method. Without that rule the column would
@@ -66,8 +60,7 @@ working as a local fallback after a switch away from Local, until the first
 login through the new method clears it, so a local Identity for every stored
 password carries over what works at the cutover.
 
-For an account without a recorded key nothing says which provider it uses, so
-a placeholder is pinned to
+Nothing records which provider an account uses, so a placeholder is pinned to
 the providers of its method that are enabled when the migration runs, a single
 one in most deployments. The pin is the list of those providers' identifiers
 (ADR 0001), stored on the placeholder row, so a provider that is added or
@@ -202,8 +195,8 @@ live account.
   such setting, and the address is whatever the directory's mail attribute
   holds. A bind through LDAP is safe only where users cannot edit that
   attribute themselves, which the operator has to confirm. The migration
-  flags both kinds of provider, and only accounts that have not signed in
-  since lmco/tir#14 are exposed.
+  flags both kinds of provider, and every account that signs in externally is
+  exposed until its first login after the cutover.
 - Bad, because two unlikely states leave a deployment's only Admin, when that
   account's one Identity is an unbound placeholder, with no recovery inside
   TIR. One is an LDAP directory starting to supply a real address in place of
@@ -230,9 +223,6 @@ live account.
   placeholder, also when its email matches an unbound one.
 - Every provider that exists at the cutover has an identifier before any
   placeholder is pinned to it.
-- An account with a recorded provider identifier and key gets a bound
-  Identity and no placeholder, and its first login after the cutover resolves
-  by key.
 - The migration log names every provider that has a placeholder pinned to it
   and either has its verified-email setting off or is an LDAP provider.
 - Every User with a stored password holds a local Identity after the
@@ -299,6 +289,7 @@ live account.
 
 Bridge for Phase 1 of ADR 0001. Reads the sign-in method that ADR 0004 defines.
 
-lmco/tir#14 records the provider identifier and the external key at each
-login (ADR 0004), so the placeholders in this ADR are for the accounts that do
-not sign in between that release and the cutover.
+Recording the external key at each login ahead of Phase 1 would let the
+migration fill in real keys and leave placeholders only for accounts that did
+not sign in. It was left out because no release separates lmco/tir#14 from
+Phase 1, so no deployment would collect any.
