@@ -33,8 +33,8 @@ existing account that a different method created?
   remove.
 - A user who has lost one credential (a forgotten local password) must be
   able to move to another method without losing the account.
-- The interim must not let an Admin change another Admin's sign-in method,
-  the protection ADR 0001 gives an Admin's logins.
+- A change to how an account signs in must leave a record of who made it, and
+  must not leave TIR with no Admin able to sign in.
 
 ## Considered Options
 
@@ -62,11 +62,22 @@ stands in for ADR 0001's prompt to prove ownership.
 
 The method can be changed in two ways:
 
-- An Admin can change the sign-in method of a non-Admin user in the user
-  editor. An Admin cannot change another Admin's method, matching ADR 0001's
-  rule that an Admin does not attach identities to another Admin.
-- An Admin can change their own method while signed in, since the session is
-  proof of ownership. This covers an admin created locally who moves to SSO.
+- An Admin can change the sign-in method of any account in the user editor,
+  another Admin's included. Admins are trusted with each other's accounts, as
+  they already are through the password reset and the provider configuration.
+  This covers an admin created locally who moves to SSO, and an Admin who has
+  lost their only credential.
+- Each change is written to the log with the account, the old and new method
+  and the Admin who made it. The log entry is what makes a takeover visible.
+
+A change is refused when it would leave no Admin able to sign in. That covers
+a method change, a role change, deleting an account, and saving a provider
+configuration that removes or disables the providers the remaining Admins
+depend on. Accounts
+record a method and not a provider, so the check counts an Admin as able to
+sign in while any provider of their method is enabled, or while they hold a
+password and local sign-in is available. It is a lockout guard and not a trust
+rule, and it does not stop a change made while no Admin could sign in already.
 
 Moving away from `local` keeps the stored password as a fallback until the
 first successful sign-in through the new method, which clears it. Until then
@@ -91,15 +102,15 @@ method and are not told apart. That distinction waits for ADR 0001.
   For the common case an SSO sign-in is refused and local still works.
 - Bad, because a non-Admin user who loses their only credential depends on an
   Admin to move them, where ADR 0001 lets them connect a login themselves.
-- Bad, because an Admin who loses their only credential cannot be moved to
-  another method by another Admin. Another Admin resets their local password
-  instead, which only helps while the account's method is local.
-- Bad, because an Admin can lower another Admin's role in the user editor and
-  then change that account's sign-in method, so the rule that only an Admin
-  changes their own method holds while the role stands. This is the one
-  respect in which the interim is looser than ADR 0001, which keeps a demoted
-  Admin protected until they next sign in. A demotion and a method change sent
-  in one request are refused, so it takes two deliberate edits.
+- Good, because an Admin who loses their only credential is moved to another
+  method by another Admin, the same as any other user.
+- Bad, because an Admin can switch another Admin's account to a method where
+  they control a login with that email address and then sign in as them. An
+  Admin can already do that with a password reset, and the log entry records
+  who made the change.
+- Bad, because the lockout guard judges by method and cannot tell two
+  providers of one method apart, so removing the one directory the last Admin
+  uses is allowed while another directory of that method stays enabled.
 - Neutral, because `creationMethod` now means the account's current sign-in
   method rather than how it was first created. The Phase 1 migration (ADR
   0003) reads the column to create each account's Identity and the old meaning
@@ -110,8 +121,10 @@ method and are not told apart. That distinction waits for ADR 0001.
 `finalizeLogin` in `server/auth/authProvider.ts` and `LocalAuthProvider`
 refuse a login whose method differs from the account's, covered by unit tests
 on the rule. `server/api/users/edit.put.ts` accepts a method change from an
-Admin for a non-Admin user or for themselves and rejects it for another Admin,
-judged by the role the account had before the same request changed it.
+Admin for any account, rejects it from anyone else, and logs it.
+`anyAdminCanSignIn` in `server/auth/signInMethod.ts` is the lockout guard,
+covered by unit tests and called from the user edit, the user delete and the
+provider configuration save.
 After a change away from `local`, local login works until the first sign-in
 through the new method and is refused after it.
 `server/api/auth/setPW.post.ts` refuses a password for an account whose method
