@@ -1,8 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { accountMethod, isSignInMethod, methodChangeRefusal, signInRefusal } from "../../../server/auth/signInMethod";
+import {
+  accountMethod,
+  anyAdminCanSignIn,
+  isSignInMethod,
+  methodChangeRefusal,
+  signInRefusal,
+} from "../../../server/auth/signInMethod";
 
 const admin = { id: 1, UserRoleId: 1 };
-const otherAdmin = { id: 2, UserRoleId: 1 };
 const member = { id: 3, UserRoleId: 2 };
 
 describe("accountMethod", () => {
@@ -49,19 +54,43 @@ describe("signInRefusal", () => {
 });
 
 describe("methodChangeRefusal", () => {
-  test("lets an admin change a non-admin user", () => {
-    expect(methodChangeRefusal(admin, member)).toBeNull();
-  });
-
-  test("lets an admin change their own method", () => {
-    expect(methodChangeRefusal(admin, admin)).toBeNull();
-  });
-
-  test("refuses an admin changing another admin", () => {
-    expect(methodChangeRefusal(admin, otherAdmin)).toMatch(/only be changed by that administrator/);
+  test("lets an admin change any account, another admin's included", () => {
+    expect(methodChangeRefusal(admin)).toBeNull();
   });
 
   test("refuses a non-admin, including on their own account", () => {
-    expect(methodChangeRefusal(member, member)).toBe("Administrator role required.");
+    expect(methodChangeRefusal(member)).toBe("Administrator role required.");
+  });
+});
+
+describe("anyAdminCanSignIn", () => {
+  const all = { local: true, ldap: true, oidc: true, oauth: true };
+  const localAdmin = { UserRoleId: 1, creationMethod: "local", password: "hash" };
+  const oidcAdmin = { UserRoleId: 1, creationMethod: "oidc", password: null };
+
+  test("is true while an admin's method has an enabled provider", () => {
+    expect(anyAdminCanSignIn([oidcAdmin], all)).toBe(true);
+  });
+
+  test("is false when the only admin's method has no enabled provider", () => {
+    expect(anyAdminCanSignIn([oidcAdmin], { ...all, oidc: false })).toBe(false);
+  });
+
+  test("counts a fallback password while local sign-in is available", () => {
+    const switched = { ...oidcAdmin, password: "hash" };
+    expect(anyAdminCanSignIn([switched], { ...all, oidc: false })).toBe(true);
+    expect(anyAdminCanSignIn([switched], { ...all, oidc: false, local: false })).toBe(false);
+  });
+
+  test("does not count a local admin without a password", () => {
+    expect(anyAdminCanSignIn([{ ...localAdmin, password: null }], all)).toBe(false);
+  });
+
+  test("ignores non-admin accounts", () => {
+    expect(anyAdminCanSignIn([{ ...localAdmin, UserRoleId: 2 }], all)).toBe(false);
+  });
+
+  test("is satisfied by any one admin", () => {
+    expect(anyAdminCanSignIn([oidcAdmin, localAdmin], { ...all, oidc: false })).toBe(true);
   });
 });

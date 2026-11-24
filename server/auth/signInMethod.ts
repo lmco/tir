@@ -25,15 +25,28 @@ export function signInRefusal(
   return `This account signs in with ${SIGN_IN_METHOD_LABELS[method]}. Use that method, or ask an administrator to change the account's sign-in method.`;
 }
 
-/** Why the actor may not change the target's sign-in method, or null when they may. */
-export function methodChangeRefusal(
-  actor: { id: number; UserRoleId: number },
-  target: { id: number; UserRoleId: number },
-): string | null {
-  if (actor.UserRoleId !== ADMIN_ROLE_ID) return "Administrator role required.";
-  if (actor.id === target.id) return null;
-  if (target.UserRoleId === ADMIN_ROLE_ID) {
-    return "An administrator's sign-in method can only be changed by that administrator.";
-  }
-  return null;
+/** Why the actor may not change an account's sign-in method, or null when they may. */
+export function methodChangeRefusal(actor: { UserRoleId: number }): string | null {
+  return actor.UserRoleId === ADMIN_ROLE_ID ? null : "Administrator role required.";
 }
+
+export type MethodAvailability = Record<SignInMethod, boolean>;
+
+type LockoutSubject = {
+  UserRoleId?: number | null;
+  creationMethod?: string | null;
+  password?: string | null;
+};
+
+function canSignIn(user: LockoutSubject, available: MethodAvailability): boolean {
+  if (available.local && user.password) return true;
+  const method = accountMethod(user);
+  return method !== "local" && available[method];
+}
+
+/** Whether at least one Admin has a way in. It judges by method, since accounts do not record a provider. */
+export function anyAdminCanSignIn(users: LockoutSubject[], available: MethodAvailability): boolean {
+  return users.some((u) => u.UserRoleId === ADMIN_ROLE_ID && canSignIn(u, available));
+}
+
+export const LOCKOUT_REFUSAL = "This change would leave no administrator able to sign in.";

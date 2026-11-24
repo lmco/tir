@@ -202,6 +202,16 @@ export function hasEnabledProvider(cfg: Partial<AuthConfig>): boolean {
   );
 }
 
+/** Which sign-in methods have somewhere to sign in. Local also counts when nothing is enabled, as the server falls back to it. */
+export function availableMethods(cfg: Partial<AuthConfig>): Record<"local" | "ldap" | "oidc" | "oauth", boolean> {
+  return {
+    local: cfg.local?.enable === true || !hasEnabledProvider(cfg),
+    ldap: (cfg.ldap ?? []).some((p) => p.enable),
+    oidc: (cfg.oidc ?? []).some((p) => p.enable),
+    oauth: (cfg.oauth ?? []).some((p) => p.enable),
+  };
+}
+
 export async function loadAuthConfig(): Promise<AuthConfig> {
   const [local, ldapIds, oidcIds, oauthIds, defaultLoginProvider] = await Promise.all([
     loadLocalConfig(),
