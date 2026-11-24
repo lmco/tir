@@ -27,6 +27,11 @@ describe("validateAuthConfigInput", () => {
     expect(out.ldap).toEqual([ldap]);
   });
 
+  test("drops a uid sent by the client", () => {
+    const out = validateAuthConfigInput({ ldap: [{ ...ldap, uid: "chosen-by-client" }] });
+    expect(out.ldap).toEqual([ldap]);
+  });
+
   test("drops unknown local fields", () => {
     const out = validateAuthConfigInput({ local: { enable: true, passwordLength: 12, bogus: "x" } });
     expect(out.local).toEqual({ enable: true, passwordLength: 12 });

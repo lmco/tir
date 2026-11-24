@@ -41,6 +41,8 @@ export type LDAPTemplate = "openldap" | "msad";
 
 export interface LDAPProviderConfig {
   id: string;
+  /** Assigned by the server when the provider is first saved. Absent on a provider not yet saved. */
+  uid?: string;
   label: string;
   template: LDAPTemplate;
   enable: boolean;
@@ -74,6 +76,8 @@ export type OIDCGroupClaimType = "scope" | "claim";
 
 export interface OIDCProviderConfig {
   id: string;
+  /** Assigned by the server when the provider is first saved. Absent on a provider not yet saved. */
+  uid?: string;
   label: string;
   enable: boolean;
   url: string;
@@ -105,6 +109,8 @@ export type OAuthProviderType = "github" | "gitlab" | "bitbucket" | "custom";
 
 export interface OAuthProviderConfig {
   id: string;
+  /** Assigned by the server when the provider is first saved. Absent on a provider not yet saved. */
+  uid?: string;
   label: string;
   providerType: OAuthProviderType;
   enable: boolean;

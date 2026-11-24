@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   getRawConfigValue,
   setRawConfigValue,
@@ -23,6 +24,15 @@ const localKey = (field: string) => `auth:local:${field}`;
 const oidcKey = (id: string, field: string) => `auth:oidc:${id}:${field}`;
 const ldapKey = (id: string, field: string) => `auth:ldap:${id}:${field}`;
 const oauthKey = (id: string, field: string) => `auth:oauth:${id}:${field}`;
+
+// Stored beside the schema fields and never read from a request, so an edit cannot change it
+// and a provider added later under a deleted provider's id gets a new one.
+const UID_FIELD = "uid";
+
+async function ensureProviderUid(keyFn: (f: string) => string, isNew: boolean): Promise<void> {
+  if (!isNew && (await getRawConfigValue(keyFn(UID_FIELD)))) return;
+  await setRawConfigValue(keyFn(UID_FIELD), randomUUID());
+}
 
 async function getIndex(indexKey: string): Promise<string[]> {
   const raw = await getRawConfigValue(indexKey);
@@ -67,6 +77,8 @@ async function loadProvider<T>(
   id: string,
 ): Promise<T> {
   const out: any = { id };
+  const uid = await getRawConfigValue(keyFn(UID_FIELD));
+  if (uid) out.uid = uid;
   for (const [field, spec] of Object.entries(schema)) {
     const raw = await getRawConfigValue(keyFn(field));
     if (spec.omit) {
@@ -87,6 +99,7 @@ async function saveProvider(
   keyFn: (f: string) => string,
   schema: Record<string, any>,
   data: Record<string, any>,
+  isNew: boolean,
 ): Promise<void> {
   const ops: Promise<void>[] = [];
   for (const [field, spec] of Object.entries(schema)) {
@@ -103,10 +116,11 @@ async function saveProvider(
     ops.push(setRawConfigValue(keyFn(field), value));
   }
   await Promise.all(ops);
+  await ensureProviderUid(keyFn, isNew);
 }
 
 async function deleteProvider(keyFn: (f: string) => string, schema: Record<string, any>): Promise<void> {
-  await Promise.all(Object.keys(schema).map((f) => deleteRawConfigValue(keyFn(f))));
+  await Promise.all([...Object.keys(schema), UID_FIELD].map((f) => deleteRawConfigValue(keyFn(f))));
 }
 
 type SecretRule = {
@@ -222,7 +236,7 @@ export async function saveAuthConfig(input: Partial<AuthConfig>): Promise<void> 
       ...storedIds.filter((id) => !submittedIds.includes(id))
         .map((id) => deleteProvider((f) => ldapKey(id, f), LDAP_PROVIDER_SCHEMA)),
       ...(input.ldap as (LDAPProviderConfig & { password?: string })[])
-        .map((p) => saveProvider((f) => ldapKey(p.id, f), LDAP_PROVIDER_SCHEMA, p as any)),
+        .map((p) => saveProvider((f) => ldapKey(p.id, f), LDAP_PROVIDER_SCHEMA, p as any, !storedIds.includes(p.id))),
     ]);
     await setIndex(LDAP_INDEX_KEY, submittedIds);
   }
@@ -234,7 +248,7 @@ export async function saveAuthConfig(input: Partial<AuthConfig>): Promise<void> 
       ...storedIds.filter((id) => !submittedIds.includes(id))
         .map((id) => deleteProvider((f) => oidcKey(id, f), OIDC_PROVIDER_SCHEMA)),
       ...(input.oidc as (OIDCProviderConfig & { secret?: string })[])
-        .map((p) => saveProvider((f) => oidcKey(p.id, f), OIDC_PROVIDER_SCHEMA, p as any)),
+        .map((p) => saveProvider((f) => oidcKey(p.id, f), OIDC_PROVIDER_SCHEMA, p as any, !storedIds.includes(p.id))),
     ]);
     await setIndex(OIDC_INDEX_KEY, submittedIds);
   }
@@ -246,7 +260,7 @@ export async function saveAuthConfig(input: Partial<AuthConfig>): Promise<void> 
       ...storedIds.filter((id) => !submittedIds.includes(id))
         .map((id) => deleteProvider((f) => oauthKey(id, f), OAUTH_PROVIDER_SCHEMA)),
       ...(input.oauth as (OAuthProviderConfig & { secret?: string })[])
-        .map((p) => saveProvider((f) => oauthKey(p.id, f), OAUTH_PROVIDER_SCHEMA, p as any)),
+        .map((p) => saveProvider((f) => oauthKey(p.id, f), OAUTH_PROVIDER_SCHEMA, p as any, !storedIds.includes(p.id))),
     ]);
     await setIndex(OAUTH_INDEX_KEY, submittedIds);
   }
