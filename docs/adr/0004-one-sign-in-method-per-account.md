@@ -33,8 +33,8 @@ existing account that a different method created?
   remove.
 - A user who has lost one credential (a forgotten local password) must be
   able to move to another method without losing the account.
-- The interim must not be looser than ADR 0001 about what an Admin may do to
-  another Admin's account.
+- The interim must not let an Admin change another Admin's sign-in method,
+  the protection ADR 0001 gives an Admin's logins.
 
 ## Considered Options
 
@@ -55,8 +55,10 @@ on the user record that ADR 0001 turns into attaching an Identity.
 Each User has exactly one sign-in method, recorded in the existing
 `creationMethod` column as `local`, `ldap`, `oidc` or `oauth`, with null read
 as `local`. A login whose email matches an account under a different method is
-refused with a message that names the account's method and says how it can be
-changed. This refusal stands in for ADR 0001's prompt to prove ownership.
+refused. Through an external provider the message names the account's method
+and says how it can be changed. The local form gives the same answer as a
+wrong password, so it does not reveal which emails have accounts. This refusal
+stands in for ADR 0001's prompt to prove ownership.
 
 The method can be changed in two ways:
 
@@ -148,5 +150,6 @@ signs the user in and LDAP is refused.
 
 ## More Information
 
-Interim for ADR 0001 (multi-identity login) and ADR 0002 (user-merge).
-Implemented in lmco/tir#14. Superseded when ADR 0001 lands.
+Interim for ADR 0001 (multi-identity login) and ADR 0002 (user-merge), which
+are recorded in lmco/tir#48. ADR 0003 is recorded in lmco/tir#52. Both merge
+after this one. Implemented in lmco/tir#14. Superseded when ADR 0001 lands.
