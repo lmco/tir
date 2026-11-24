@@ -130,8 +130,9 @@ attached is held to the same gate when it first signs in.
 
 A signed-in user can connect a further login, including one with a different
 email, from their profile page, and can remove one of their own Identities
-there, except the last working one. Turning the switch off asks the Admin to
-confirm that first-time users of that provider will be rejected.
+there, except the last working one and one that began as a placeholder (ADR
+0003). Turning the switch off asks the Admin to confirm that first-time users
+of that provider will be rejected.
 
 An Admin can also attach an Identity to any User, or remove one, from the user
 editor. This covers a person who cannot prove ownership themselves, such as a
