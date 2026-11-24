@@ -13,11 +13,13 @@ export default defineNitroPlugin(async () => {
         await parseControlData(file, filePath);
       }
     }
+    logger.info({ service: "SCTM", message: "SCTM Imports Complete" });
     signalReady(CONTROL_DATA_IMPORT_SIGNAL); 
   } catch (error) {
 
     logSequelizeError(error);
     signalReady(CONTROL_DATA_IMPORT_SIGNAL); 
     console.error(error);
+    logger.error({ service: "SCTM", message: `Wait for unblock, signal error ${error}` });
   }
 });

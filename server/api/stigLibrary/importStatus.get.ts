@@ -2,5 +2,5 @@ import { CONTROL_DATA_IMPORT_SIGNAL, getSignal } from "~/server/utils/startupSyn
 
 export default defineEventHandler(async (event) => {
   await userCheck(event, undefined, undefined, undefined);
-  return { status: getSignal(CONTROL_DATA_IMPORT_SIGNAL) };
+  return { busy: !getSignal(CONTROL_DATA_IMPORT_SIGNAL).isResolved };
 });
