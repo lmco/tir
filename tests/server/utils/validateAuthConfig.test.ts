@@ -27,6 +27,14 @@ describe("validateAuthConfigInput", () => {
     expect(out.ldap).toEqual([ldap]);
   });
 
+  test.each([
+    ["ldap", { ...ldap, template: "novell" }, /template must be one of openldap, msad/],
+    ["oidc", { id: "oidc-1", groupClaimType: "header" }, /groupClaimType must be one of scope, claim/],
+    ["oauth", { id: "oauth-1", providerType: "facebook" }, /providerType must be one of github, gitlab/],
+  ])("rejects an unknown %s choice", (kind, provider, message) => {
+    expect(() => validateAuthConfigInput({ [kind]: [provider] })).toThrow(message);
+  });
+
   test("drops a uid sent by the client", () => {
     const out = validateAuthConfigInput({ ldap: [{ ...ldap, uid: "chosen-by-client" }] });
     expect(out.ldap).toEqual([ldap]);

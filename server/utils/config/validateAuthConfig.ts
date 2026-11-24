@@ -11,7 +11,7 @@ export const PROVIDER_ID_PATTERN = /^[a-z0-9-]+$/;
 
 export class AuthConfigValidationError extends Error {}
 
-type FieldSpec = { type: string; omit?: boolean; setFlag?: string };
+type FieldSpec = { type: string; omit?: boolean; setFlag?: string; oneOf?: readonly string[] };
 type Schema = Record<string, FieldSpec>;
 
 function fail(message: string): never {
@@ -42,6 +42,9 @@ function pickBySchema(where: string, schema: Schema, item: Record<string, unknow
     const value = item[field];
     if (value !== undefined) {
       expectType(where, field, value, spec.type);
+      if (spec.oneOf && !spec.oneOf.includes(value as string)) {
+        fail(`${where}: ${field} must be one of ${spec.oneOf.join(", ")}.`);
+      }
       out[field] = value;
     }
     if (!spec.omit) continue;

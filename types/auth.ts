@@ -59,7 +59,7 @@ export interface LDAPProviderConfig {
 
 export const LDAP_PROVIDER_SCHEMA = {
   label: { type: "str", default: "LDAP" },
-  template: { type: "str", default: "openldap" },
+  template: { type: "str", default: "openldap", oneOf: ["openldap", "msad"] },
   enable: { type: "bool", default: false },
   url: { type: "str", default: "" },
   bindDn: { type: "str", default: "" },
@@ -99,7 +99,7 @@ export const OIDC_PROVIDER_SCHEMA = {
   secret: { type: "str", default: "", omit: true, setFlag: "secretSet" },
   callback: { type: "str", default: "" },
   groupMappings: { type: "str", default: "" },
-  groupClaimType: { type: "str", default: "scope" },
+  groupClaimType: { type: "str", default: "scope", oneOf: ["scope", "claim"] },
   groupClaimPath: { type: "str", default: "" },
   sslInsecure: { type: "bool", default: false },
   requireVerifiedEmail: { type: "bool", default: true },
@@ -129,7 +129,7 @@ export interface OAuthProviderConfig {
 
 export const OAUTH_PROVIDER_SCHEMA = {
   label: { type: "str", default: "OAuth 2.0" },
-  providerType: { type: "str", default: "github" },
+  providerType: { type: "str", default: "github", oneOf: ["github", "gitlab", "bitbucket", "custom"] },
   enable: { type: "bool", default: false },
   baseUrl: { type: "str", default: "" },
   clientId: { type: "str", default: "" },
