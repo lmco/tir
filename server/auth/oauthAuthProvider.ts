@@ -12,6 +12,8 @@ interface UserProfile {
   email: string;
   firstName: string;
   lastName: string;
+  /** The provider's own id for the account, absent when a custom provider reports none. */
+  externalKey?: string;
 }
 
 export const KNOWN_PROVIDERS: Record<
@@ -138,7 +140,9 @@ export class OAuthAuthProvider extends AuthProvider {
   async handleCallback(event: H3Event) {
     const { profile, userGroups } = await this.resolveFromCode(event);
     const userRoleId = resolveRole(userGroups, this.groupMappings, this.config.groupMappings);
-    return this.finalizeLogin(event, profile, "oauth", userRoleId);
+    const { externalKey, ...person } = profile;
+    const external = { providerUid: this.config.uid, key: externalKey };
+    return this.finalizeLogin(event, person, "oauth", userRoleId, external);
   }
 
   async handleTestCallback(event: H3Event): Promise<TestLoginResult> {
@@ -205,7 +209,7 @@ export class OAuthAuthProvider extends AuthProvider {
     const emails: any[] = emailRes.ok ? await emailRes.json() : [];
     const email: string | undefined = emails.find((e) => e.primary && e.verified)?.email;
     if (!email) throw new Error("Could not determine a verified email from GitHub.");
-    return { email, ...splitName(u.name || u.login) };
+    return { email, ...splitName(u.name || u.login), externalKey: keyOf(u.id) };
   }
 
   private async fetchGitHubGroups(token: string, email: string): Promise<string[]> {
@@ -233,7 +237,7 @@ export class OAuthAuthProvider extends AuthProvider {
     if (this.config.requireVerifiedEmail && !u.confirmed_at) {
       throw new Error("GitLab has not confirmed this user's email address.");
     }
-    return { email: u.email, ...splitName(u.name || u.username) };
+    return { email: u.email, ...splitName(u.name || u.username), externalKey: keyOf(u.id) };
   }
 
   private async fetchGitLabGroups(token: string, email: string): Promise<string[]> {
@@ -259,7 +263,7 @@ export class OAuthAuthProvider extends AuthProvider {
     const emailData = await emailRes.json();
     const primary = emailData.values?.find((e: any) => e.is_primary && e.is_confirmed);
     if (!primary?.email) throw new Error("Could not determine a verified email from Bitbucket.");
-    return { email: primary.email, ...splitName(u.display_name || u.username) };
+    return { email: primary.email, ...splitName(u.display_name || u.username), externalKey: keyOf(u.uuid) };
   }
 
   private async fetchBitbucketGroups(token: string, email: string): Promise<string[]> {
@@ -386,7 +390,12 @@ function extractCustomProfile(userInfo: any): UserProfile {
     userInfo.last_name ||
     (userInfo.name || "").split(" ").slice(1).join(" ") ||
     "Unknown";
-  return { email, firstName, lastName };
+  return { email, firstName, lastName, externalKey: keyOf(userInfo.sub ?? userInfo.id) };
+}
+
+function keyOf(value: unknown): string | undefined {
+  if (typeof value === "string" && value) return value;
+  return typeof value === "number" ? String(value) : undefined;
 }
 
 function extractClaimGroups(userInfo: any, claimPath: string): string[] {

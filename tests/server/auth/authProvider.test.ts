@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { assertEmailVerified } from "../../../server/auth/authProvider";
+import { assertEmailVerified, recordExternalLogin } from "../../../server/auth/authProvider";
 import { GroupClaimExtractor } from "../../../server/auth/groupClaimExtractor";
 
 vi.mock("../../../db/models", () => ({
@@ -123,5 +123,48 @@ describe("GroupClaimExtractor", () => {
 
     const roles = extractor.getAllMatchingRoles(["unknown"]);
     expect(roles).toEqual([]);
+  });
+});
+
+describe("recordExternalLogin", () => {
+  const notice = vi.fn();
+  vi.stubGlobal("logger", { notice });
+  const account = (providerId: string | null = null, externalKey: string | null = null) => ({
+    email: "fry@example.com",
+    providerId,
+    externalKey,
+  });
+
+  test("stores the provider and key on the first login", () => {
+    const user = account();
+    expect(recordExternalLogin(user, { providerUid: "uid-1", key: "sub-1" })).toBe(true);
+    expect(user).toMatchObject({ providerId: "uid-1", externalKey: "sub-1" });
+  });
+
+  test("reports no change when both already match", () => {
+    expect(recordExternalLogin(account("uid-1", "sub-1"), { providerUid: "uid-1", key: "sub-1" })).toBe(false);
+  });
+
+  test("stores nothing when the provider or the key is missing", () => {
+    const user = account();
+    expect(recordExternalLogin(user, { providerUid: "uid-1" })).toBe(false);
+    expect(recordExternalLogin(user, { key: "sub-1" })).toBe(false);
+    expect(user).toMatchObject({ providerId: null, externalKey: null });
+  });
+
+  test("replaces the key and logs when the same provider reports a different one", () => {
+    notice.mockClear();
+    const user = account("uid-1", "sub-1");
+    expect(recordExternalLogin(user, { providerUid: "uid-1", key: "sub-2" })).toBe(true);
+    expect(user.externalKey).toBe("sub-2");
+    expect(notice).toHaveBeenCalledOnce();
+  });
+
+  test("replaces both without a log when the login comes through another provider", () => {
+    notice.mockClear();
+    const user = account("uid-1", "sub-1");
+    expect(recordExternalLogin(user, { providerUid: "uid-2", key: "dn-9" })).toBe(true);
+    expect(user).toMatchObject({ providerId: "uid-2", externalKey: "dn-9" });
+    expect(notice).not.toHaveBeenCalled();
   });
 });

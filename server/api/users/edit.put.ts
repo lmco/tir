@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const user = await User.findByPk(body.id, { attributes: { exclude: ["password", "salt"] } });
+  const user = await User.findByPk(body.id, { attributes: { exclude: ["password", "salt", "providerId", "externalKey"] } });
 
   if (!user) {
     throw createError({
@@ -72,6 +72,9 @@ export default defineEventHandler(async (event) => {
     const refusal = methodChangeRefusal(checkResult.user);
     if (refusal) throw createError({ statusCode: 403, statusMessage: refusal });
     user.creationMethod = body.signInMethod;
+    // The recorded provider and key belong to the old method.
+    user.providerId = null;
+    user.externalKey = null;
   } else {
     delete body.signInMethod;
   }

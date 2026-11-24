@@ -26,6 +26,31 @@ export function assertEmailVerified(claims: Record<string, any>, required: boole
   throw new Error("The identity provider has not verified this email address.");
 }
 
+/** The provider's identifier and its own key for the person, as the provider reported them at this login. */
+export interface ExternalLogin {
+  providerUid?: string;
+  key?: string;
+}
+
+// Nothing reads these yet. They are kept so that the move to Identities (ADR 0001) starts
+// from a real key for every account that has signed in, and not from an email match.
+export function recordExternalLogin(
+  user: Pick<User, "email" | "providerId" | "externalKey">,
+  { providerUid, key }: ExternalLogin,
+): boolean {
+  if (!providerUid || !key) return false;
+  if (user.providerId === providerUid && user.externalKey === key) return false;
+  if (user.providerId === providerUid && user.externalKey) {
+    logger.notice({
+      service: "auth",
+      message: `External key for ${user.email} changed at provider ${providerUid}`,
+    });
+  }
+  user.providerId = providerUid;
+  user.externalKey = key;
+  return true;
+}
+
 export abstract class AuthProvider {
   abstract init(): Promise<void>;
   abstract authenticate(event: AuthEvent, credentials?: any): Promise<any>;
@@ -38,6 +63,7 @@ export abstract class AuthProvider {
     profile: { email: string | string[]; firstName: string; lastName: string },
     authMethod: Exclude<SignInMethod, "local">,
     userRoleId: number | null = null,
+    external: ExternalLogin = {},
   ): Promise<{ sessionId: string; user: any }> {
     const { firstName, lastName } = profile;
     // Only the primary address links to an account: a secondary address equal to another
@@ -66,6 +92,8 @@ export abstract class AuthProvider {
       logger.info({ service: "auth", message: `Created new local user for ${authMethod} login: ${email}` });
     }
 
+    const externalChanged = recordExternalLogin(user, external);
+
     const roleChanged = Boolean(userRoleId) && user.UserRoleId !== userRoleId;
     if (roleChanged) user.UserRoleId = userRoleId!;
 
@@ -73,7 +101,7 @@ export abstract class AuthProvider {
     const fallbackCleared = Boolean(user.password);
     if (fallbackCleared) user.set({ password: null, salt: null } as any);
 
-    if (roleChanged || fallbackCleared) {
+    if (roleChanged || fallbackCleared || externalChanged) {
       user.lastUpdate = DateTime.now().toISO();
       await user.save();
     }

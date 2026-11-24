@@ -210,18 +210,19 @@ export class OIDCAuthProvider extends AuthProvider {
     if (!email) throw new Error("ID token is missing an email claim.");
     assertEmailVerified(idTokenClaims, config.requireVerifiedEmail);
 
-    return { email, firstName, lastName, groups, userRoleId };
+    return { email, firstName, lastName, groups, userRoleId, sub };
   }
 
   async handleCallback(event: AuthEvent) {
     const config = this.config;
-    const { email, firstName, lastName, userRoleId } = await this.resolveFromTokens(event);
+    const { email, firstName, lastName, userRoleId, sub } = await this.resolveFromTokens(event);
 
     if ((config.groupMappings || "").length > 0 && !userRoleId) {
       throw new H3Error("Unauthorized: You do not belong to any permitted groups.");
     }
 
-    return this.finalizeLogin(event, { email, firstName, lastName }, "oidc", userRoleId);
+    const external = { providerUid: config.uid, key: sub };
+    return this.finalizeLogin(event, { email, firstName, lastName }, "oidc", userRoleId, external);
   }
 
   async handleTestCallback(event: AuthEvent): Promise<TestLoginResult> {
