@@ -81,6 +81,19 @@ export default defineEventHandler(async (event) => {
       statusMessage: "System does not belong to this Boundary.",
     });
   }
+
+  try {
+    fs.mkdirSync(path.join(sessionDir, ".committing"));
+  } catch (error) {
+    if (["EEXIST", "ENOENT"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "This import is already processing or has expired.",
+      });
+    }
+    throw error;
+  }
+
   const updateSystemLastUpdate = async (systemIds: number[]) => {
     if (!systemIds.length) return;
 
@@ -94,87 +107,107 @@ export default defineEventHandler(async (event) => {
       },
     );
   };
-  for (const file of analyzableFiles) {
-    if (typeof file.fileId !== "string" || !file.fileId) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: "Invalid analysis file ID. Please re-upload.",
-      });
-    }
-    
-    const assignment = receivedAssignments.find((a: any) => a.fileId === file.fileId);
-    const autoMatch = autoMatched.find((a: any) => a.fileId === file.fileId);
-
-    const systemId = Number(assignment?.systemId ?? autoMatch?.systemId);
-
-    const hasNessusMatches =
-      file.ext === ".nessus" &&
-      [...receivedAssignments, ...autoMatched].some(
-        (match: any) => match.type === "nessus" && match.fileId === file.fileId,
-      );
-
-    if (!systemId && !hasNessusMatches) {
-      continue;
-    }
-
-    if (fs.statSync(file.path).size > MAX_IMPORT_FILE_BYTES) {
-      throw createError({
-        statusCode: 413,
-        statusMessage: `File too large to import: ${file.originalName}`,
-      });
-    }
-
-    const fileData = fs.readFileSync(file.path, "utf8");
-
-    if (file.ext === ".ckl") {
-      if (!systemId) continue;
-      await importChecklist(fileData, systemId);
-      await updateSystemLastUpdate([systemId]);
-    }
-
-    if (file.ext === ".cklb") {
-      if (!systemId) continue;
-      const checklistData: ChecklistV3 = JSON.parse(fileData);
-      await importChecklistV3(checklistData, systemId);
-      await updateSystemLastUpdate([systemId]);
-    }
-
-    if (file.ext === ".nessus") {
-      const autoMatches = autoMatched
-        .filter((match: any) => match.type === "nessus" && match.fileId === file.fileId)
-        .map((match: any) => ({
-          SystemId: Number(match.systemId),
-          NessusHostName: match.hostName,
-        }));
-
-      const assignedMatches = receivedAssignments
-        .filter(
-          (assignment: any) => assignment.type === "nessus" && assignment.fileId === file.fileId,
-        )
-        .map((assignment: any) => ({
-          SystemId: Number(assignment.systemId),
-          NessusHostName: assignment.hostName,
-        }));
-
-      const nessusMatches = [...autoMatches, ...assignedMatches];
-
-      if (nessusMatches.length > 0) {
-        await importNessus(fileData, nessusMatches);
-        await updateSystemLastUpdate(nessusMatches.map((match) => match.SystemId));
+  const skippedFiles: string[] = [];
+  try {
+    for (const file of analyzableFiles) {
+      if (typeof file.fileId !== "string" || !file.fileId) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "Invalid analysis file ID. Please re-upload.",
+        });
       }
-    }
 
-    if (file.ext === ".xml") {
-      if (!assignment?.systemId) continue;
-      if (verifyXccdf(fileData)) {
+      const assignment = receivedAssignments.find((a: any) => a.fileId === file.fileId);
+      const autoMatch = autoMatched.find((a: any) => a.fileId === file.fileId);
+
+      const systemId = Number(assignment?.systemId ?? autoMatch?.systemId);
+
+      const hasNessusMatches =
+        file.ext === ".nessus" &&
+        [...receivedAssignments, ...autoMatched].some(
+          (match: any) => match.type === "nessus" && match.fileId === file.fileId,
+        );
+
+      if (!systemId && !hasNessusMatches) {
+        continue;
+      }
+
+      if (fs.statSync(file.path).size > MAX_IMPORT_FILE_BYTES) {
+        throw createError({
+          statusCode: 413,
+          statusMessage: `File too large to import: ${file.originalName}`,
+        });
+      }
+
+      const fileData = fs.readFileSync(file.path, "utf8");
+
+      if (file.ext === ".ckl") {
+        if (!systemId) continue;
+        await importChecklist(fileData, systemId);
+        await updateSystemLastUpdate([systemId]);
+      }
+
+      if (file.ext === ".cklb") {
+        if (!systemId) continue;
+        const checklistData: ChecklistV3 = JSON.parse(fileData);
+        await importChecklistV3(checklistData, systemId);
+        await updateSystemLastUpdate([systemId]);
+      }
+
+      if (file.ext === ".nessus") {
+        const autoMatches = autoMatched
+          .filter((match: any) => match.type === "nessus" && match.fileId === file.fileId)
+          .map((match: any) => ({
+            SystemId: Number(match.systemId),
+            NessusHostName: match.hostName,
+          }));
+
+        const assignedMatches = receivedAssignments
+          .filter(
+            (assignment: any) => assignment.type === "nessus" && assignment.fileId === file.fileId,
+          )
+          .map((assignment: any) => ({
+            SystemId: Number(assignment.systemId),
+            NessusHostName: assignment.hostName,
+          }));
+
+        const nessusMatches = [...autoMatches, ...assignedMatches];
+
+        if (nessusMatches.length > 0) {
+          await importNessus(fileData, nessusMatches);
+          await updateSystemLastUpdate(nessusMatches.map((match) => match.SystemId));
+        }
+      }
+
+      if (file.ext === ".xml") {
+        if (!assignment?.systemId) continue;
+
+        let isValid = false;
+
+        try {
+          isValid = verifyXccdf(fileData);
+        } catch (error) {
+          if ((error as { statusCode?: number }).statusCode !== 400) {
+            throw error;
+          }
+        }
+
+        if (!isValid) {
+          skippedFiles.push(file.originalName);
+          continue;
+        }
+
         await importXccdf(fileData, systemId);
         await updateSystemLastUpdate([systemId]);
       }
     }
+  } finally {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
   }
-  fs.rmSync(sessionDir, { recursive: true, force: true });
-
-  return { success: true };
+  return {
+    success: true,
+    skippedFiles,
+  };
 });
 
 const verifyXccdf = (xmlData: string): boolean => {
