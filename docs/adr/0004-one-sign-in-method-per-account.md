@@ -29,8 +29,8 @@ existing account that a different method created?
 - Deployments already have people who sign in through more than one method on
   one email, typically an admin created locally who also uses SSO, and an
   interim rule must leave a way to serve them.
-- The interim must not add schema or configuration that ADR 0001 then has to
-  remove.
+- The interim must not add schema or configuration beyond what the Phase 1
+  migration reads and then removes.
 - A user who has lost one credential (a forgotten local password) must be
   able to move to another method without losing the account.
 - A change to how an account signs in must leave a record of who made it, and
@@ -60,15 +60,13 @@ and says how it can be changed. The local form gives the same answer as a
 wrong password, so it does not reveal which emails have accounts. This refusal
 stands in for ADR 0001's prompt to prove ownership.
 
-The method can be changed in two ways:
-
-- An Admin can change the sign-in method of any account in the user editor,
-  another Admin's included. Admins are trusted with each other's accounts, as
-  they already are through the password reset and the provider configuration.
-  This covers an admin created locally who moves to SSO, and an Admin who has
-  lost their only credential.
-- Each change is written to the log with the account, the old and new method
-  and the Admin who made it. The log entry is what makes a takeover visible.
+An Admin can change the sign-in method of any account in the user editor,
+another Admin's included. Admins are trusted with each other's accounts, as
+they already are through the password reset and the provider configuration.
+This covers an admin created locally who moves to SSO, and an Admin who has
+lost their only credential. Each change is written to the log with the
+account, the old and new method and the Admin who made it. The log entry is
+what makes a takeover visible.
 
 A change is refused when it would leave no Admin able to sign in. That covers
 a method change, a role change, deleting an account, and saving a provider
@@ -90,10 +88,18 @@ password cannot be changed and does not come back once it is cleared. Moving to
 Providers of the same family (two LDAP directories, two OIDC realms) share one
 method and are not told apart. That distinction waits for ADR 0001.
 
+Each login through an external provider records that provider's identifier and
+the provider's own key for the person on the account: the subject for OIDC,
+the DN for LDAP, the account id for OAuth. Nothing reads them before Phase 1.
+They are there so the Phase 1 migration (ADR 0003) gives an account that has
+signed in a real Identity and leaves an email-matched placeholder only for the
+accounts that have not. A change of sign-in method clears them, and a
+different key from the same provider replaces the stored one with a log entry.
+
 ### Consequences
 
-- Good, because an identity presented by one provider can no longer take over
-  an account created through another by matching its email.
+- Good, because an identity presented through one method can no longer take
+  over an account created through another method by matching its email.
 - Good, because the escape hatch is a visible action on the user record rather
   than a hidden rule, and it is the action ADR 0001 turns into attaching an
   Identity.
@@ -111,6 +117,15 @@ method and are not told apart. That distinction waits for ADR 0001.
 - Bad, because the lockout guard judges by method and cannot tell two
   providers of one method apart, so removing the one directory the last Admin
   uses is allowed while another directory of that method stays enabled.
+- Good, because every account that signs in before Phase 1 crosses the cutover
+  on a key its provider issued, so the email match ADR 0003 has to allow at
+  the first login after the cutover applies to fewer accounts.
+- Bad, because the recorded key is the one from the latest login. Where two
+  providers of one method both accept an address, the account carries
+  whichever signed in last.
+- Neutral, because the key is stored in a new `externalKey` column and the
+  provider identifier in the existing, unused `providerId` column. Phase 1
+  moves both to the Identity table and drops them.
 - Neutral, because `creationMethod` now means the account's current sign-in
   method rather than how it was first created. The Phase 1 migration (ADR
   0003) reads the column to create each account's Identity and the old meaning
@@ -122,6 +137,8 @@ method and are not told apart. That distinction waits for ADR 0001.
 refuse a login whose method differs from the account's, covered by unit tests
 on the rule. `server/api/users/edit.put.ts` accepts a method change from an
 Admin for any account, rejects it from anyone else, and logs it.
+`recordExternalLogin` in `server/auth/authProvider.ts` stores the provider
+identifier and key at each external login, covered by unit tests.
 `anyAdminCanSignIn` in `server/auth/signInMethod.ts` is the lockout guard,
 covered by unit tests and called from the user edit, the user delete and the
 provider configuration save.
