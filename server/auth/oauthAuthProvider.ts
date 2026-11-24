@@ -200,14 +200,10 @@ export class OAuthAuthProvider extends AuthProvider {
     if (!res.ok) throw new Error("Failed to fetch GitHub user info.");
     const u = await res.json();
 
-    let email: string = u.email;
-    if (!email) {
-      const emailRes = await fetch(`${api}/user/emails`, { headers });
-      if (emailRes.ok) {
-        const emails: any[] = await emailRes.json();
-        email = emails.find((e) => e.primary && e.verified)?.email;
-      }
-    }
+    // The public profile email is a display choice and need not be the primary address.
+    const emailRes = await fetch(`${api}/user/emails`, { headers });
+    const emails: any[] = emailRes.ok ? await emailRes.json() : [];
+    const email: string | undefined = emails.find((e) => e.primary && e.verified)?.email;
     if (!email) throw new Error("Could not determine a verified email from GitHub.");
     return { email, ...splitName(u.name || u.login) };
   }

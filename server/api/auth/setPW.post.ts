@@ -60,7 +60,9 @@ export default defineEventHandler(async (event) => {
   }
 
   user.password = hashPassword(body.password, user.salt, SECRET_KEY);
-  user.passwordChangedAt = DateTime.now().toISO();
+  const now = DateTime.now().toISO();
+  user.passwordChangedAt = now;
+  user.lastUpdate = now;
 
   await user.save();
 
