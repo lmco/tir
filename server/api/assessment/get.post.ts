@@ -1,9 +1,16 @@
-import { Assessment, AssessmentItem, StigData } from "../../../db/models";
+import {
+  Assessment,
+  AssessmentItem,
+  StigData,
+  System,
+} from "../../../db/models";
+import { StigOverride } from "~/db/models/stigOverride";
 import { userCheck } from "~/server/utils/permissionCheck";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
   const checkResult = await userCheck(event, body.SystemId, undefined, undefined);
+
   if (checkResult.UserRoleId === 2 && checkResult.BoundaryRoleId) {
     const assessmentQueryResults = await Assessment.findOne({
       where: {
@@ -19,6 +26,21 @@ export default defineEventHandler(async (event) => {
         },
         include: {
           model: StigData,
+          include: [
+            {
+              model: StigOverride,
+              attributes: ["type", "value"],
+              required: false,
+              include: [
+                {
+                  model: System,
+                  attributes: ["id"],
+                  where: { id: body.SystemId },
+                  required: true,
+                },
+              ],
+            },
+          ],
         },
       });
 
