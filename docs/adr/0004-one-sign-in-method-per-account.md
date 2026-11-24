@@ -49,8 +49,9 @@ existing account that a different method created?
 
 Chosen option: "One sign-in method per account", because it applies ADR 0001's
 rule that a matching email never links before the prove-ownership prompt
-exists, it needs no schema change, and its escape hatch is a deliberate action
-on the user record that ADR 0001 turns into attaching an Identity.
+exists, the rule itself needs no schema change, and its escape hatch is a
+deliberate action on the user record that ADR 0001 turns into attaching an
+Identity.
 
 Each User has exactly one sign-in method, recorded in the existing
 `creationMethod` column as `local`, `ldap`, `oidc` or `oauth`, with null read
@@ -71,11 +72,13 @@ what makes a takeover visible.
 A change is refused when it would leave no Admin able to sign in. That covers
 a method change, a role change, deleting an account, and saving a provider
 configuration that removes or disables the providers the remaining Admins
-depend on. Accounts
-record a method and not a provider, so the check counts an Admin as able to
-sign in while any provider of their method is enabled, or while they hold a
-password and local sign-in is available. It is a lockout guard and not a trust
-rule, and it does not stop a change made while no Admin could sign in already.
+depend on. An account can sign in through any provider of its method, so the
+check counts an Admin as able to sign in while any provider of their method is
+enabled, or while they hold a password and local sign-in is available. It is a
+lockout guard and not a trust rule, and it does not stop a change made while
+no Admin could sign in already. It does not cover the role a provider's group
+mappings grant at login. When those lower the last Admin, the fix is made at
+the provider, and the next person it maps to Admin becomes one at their login.
 
 Moving away from `local` keeps the stored password as a fallback until the
 first successful sign-in through the new method, which clears it. Until then
@@ -114,9 +117,10 @@ different key from the same provider replaces the stored one with a log entry.
   they control a login with that email address and then sign in as them. An
   Admin can already do that with a password reset, and the log entry records
   who made the change.
-- Bad, because the lockout guard judges by method and cannot tell two
-  providers of one method apart, so removing the one directory the last Admin
-  uses is allowed while another directory of that method stays enabled.
+- Bad, because the lockout guard judges by method and does not ask whether the
+  last Admin exists at the provider that remains, so removing the one
+  directory they use is allowed while another directory of that method stays
+  enabled.
 - Good, because every account that signs in before Phase 1 crosses the cutover
   on a key its provider issued, so the email match ADR 0003 has to allow at
   the first login after the cutover applies to fewer accounts.
