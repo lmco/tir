@@ -14,18 +14,15 @@ export default defineNitroPlugin(async () => {
         await parseControlData(file, filePath);
       }
     }
-    
     logger.info({ service: "SCTM", message: "SCTM Imports Complete" });
   } catch (error) {
-    // Log once with appropriate context
     logger.error({ 
       service: "SCTM", 
       message: "SCTM import failed", 
       error 
     });
-    logSequelizeError(error); // Only if this does something special beyond logging
+    logSequelizeError(error);
   } finally {
-    // Always signal ready, whether success or failure
     signalReady(CONTROL_DATA_IMPORT_SIGNAL);
   }
 });
