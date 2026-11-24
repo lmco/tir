@@ -1,4 +1,6 @@
+import { DateTime } from "luxon";
 import { User, Timezone } from "../../../db/models";
+import { accountMethod, isSignInMethod, methodChangeRefusal } from "~/server/auth/signInMethod";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -20,6 +22,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const orginalUser = user.email;
+  // A demotion in this same request must not hide an Admin from the method check.
+  const roleBeforeEdit = user.UserRoleId;
 
   if (body.email) {
     if (body.email !== user?.email) {
@@ -55,6 +59,20 @@ export default defineEventHandler(async (event) => {
     delete body.UserRoleId;
   }
 
+  if (body.signInMethod !== undefined && body.signInMethod !== accountMethod(user)) {
+    if (!isSignInMethod(body.signInMethod)) {
+      throw createError({ statusCode: 400, statusMessage: "Unknown sign-in method." });
+    }
+    const refusal = methodChangeRefusal(checkResult.user, {
+      id: user.id,
+      UserRoleId: roleBeforeEdit,
+    });
+    if (refusal) throw createError({ statusCode: 403, statusMessage: refusal });
+    user.creationMethod = body.signInMethod;
+  } else {
+    delete body.signInMethod;
+  }
+
   if (body.ThemeId && user.ThemeId !== body.ThemeId) {
     user.ThemeId = body.ThemeId;
   } else {
@@ -77,7 +95,8 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  user.save();
+  user.lastUpdate = DateTime.now().toISO();
+  await user.save();
 
   const attributes = Object.keys(body).filter((key) => key !== "id");
   const attributesString = attributes.join(", ");

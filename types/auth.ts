@@ -138,6 +138,16 @@ export const OAUTH_PROVIDER_SCHEMA = {
   requireVerifiedEmail: { type: "bool", default: true },
 } as const;
 
+export const SIGN_IN_METHODS = ["local", "ldap", "oidc", "oauth"] as const;
+export type SignInMethod = (typeof SIGN_IN_METHODS)[number];
+
+export const SIGN_IN_METHOD_LABELS: Record<SignInMethod, string> = {
+  local: "Local",
+  ldap: "LDAP",
+  oidc: "OIDC",
+  oauth: "OAuth 2.0",
+};
+
 export type AuthConfig = {
   local: LocalAuthConfig;
   ldap: LDAPProviderConfig[];

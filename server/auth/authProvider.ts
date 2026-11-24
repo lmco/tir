@@ -1,7 +1,9 @@
+import { H3Error } from "h3";
 import { DateTime } from "luxon";
 import { User } from "../../db/models";
 import { SessionService } from "./sessionService";
-import type { AuthEvent } from "~/types/auth";
+import { signInRefusal } from "./signInMethod";
+import type { AuthEvent, SignInMethod } from "~/types/auth";
 
 export interface TestLoginResult {
   providerId: string;
@@ -34,7 +36,7 @@ export abstract class AuthProvider {
   protected async finalizeLogin(
     event: AuthEvent,
     profile: { email: string | string[]; firstName: string; lastName: string },
-    authMethod: string,
+    authMethod: Exclude<SignInMethod, "local">,
     userRoleId: number | null = null,
   ): Promise<{ sessionId: string; user: any }> {
     const { firstName, lastName } = profile;
@@ -44,6 +46,11 @@ export abstract class AuthProvider {
     if (!email) throw new Error("The login profile has no email address.");
 
     let user = await User.findOne({ where: { email } });
+    const refusal = user && signInRefusal(user, authMethod);
+    if (refusal) {
+      logger.info({ service: "auth", message: `Refused ${authMethod} login for ${email}: sign-in method mismatch` });
+      throw new H3Error(refusal);
+    }
     if (!user) {
       const now = DateTime.now().toISO();
       user = await User.create({
@@ -59,11 +66,22 @@ export abstract class AuthProvider {
       logger.info({ service: "auth", message: `Created new local user for ${authMethod} login: ${email}` });
     }
 
-    if (userRoleId && user.UserRoleId !== userRoleId) {
-      user.UserRoleId = userRoleId;
+    const roleChanged = Boolean(userRoleId) && user.UserRoleId !== userRoleId;
+    if (roleChanged) user.UserRoleId = userRoleId!;
+
+    // The switch to this method is now proven, so the local fallback goes.
+    const fallbackCleared = Boolean(user.password);
+    if (fallbackCleared) user.set({ password: null, salt: null } as any);
+
+    if (roleChanged || fallbackCleared) {
       user.lastUpdate = DateTime.now().toISO();
       await user.save();
+    }
+    if (roleChanged) {
       logger.info({ service: "auth", message: `User role updated for ${email} to RoleId ${userRoleId}` });
+    }
+    if (fallbackCleared) {
+      logger.info({ service: "auth", message: `Local password cleared for ${email} after first ${authMethod} login` });
     }
 
     logger.info({ service: "auth", message: `Successful ${authMethod} login for: ${email}` });

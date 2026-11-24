@@ -2,6 +2,8 @@ import { DateTime } from "luxon";
 import { User } from "../../../db/models";
 import { generateSalt, hashPassword } from "~/server/utils/hash";
 import { getPasswordViolations } from "~/server/utils/password";
+import { accountMethod } from "~/server/auth/signInMethod";
+import { SIGN_IN_METHOD_LABELS } from "~/types/auth";
 
 const config = useRuntimeConfig();
 
@@ -30,6 +32,13 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 401,
       statusMessage: "Unknown User.",
+    });
+  }
+
+  if (accountMethod(user) !== "local") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `This account signs in with ${SIGN_IN_METHOD_LABELS[accountMethod(user)]}. Change its sign-in method to Local before setting a password.`,
     });
   }
 

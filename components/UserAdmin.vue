@@ -93,6 +93,8 @@
                                       (editTimezoneName = timeZones.at(person.TimezoneId - 1)),
                                       (newRoleName = person.UserRole.name),
                                       (selected = person.UserRole),
+                                      (newSignInMethod = person.signInMethod ?? 'local'),
+                                      (editLocalPasswordActive = person.localPasswordActive === true),
                                     ]
                                   "
                                   >Edit<span class="sr-only">, </span></a
@@ -379,6 +381,38 @@
                                                 </option>
                                               </select>
 
+                                              <template v-if="edit === true">
+                                                <label
+                                                  for="sign-in-method"
+                                                  class="mt-4 block text-sm font-medium leading-6 text-gray-800 dark:text-white"
+                                                  >Sign-in method
+                                                </label>
+                                                <select
+                                                  id="sign-in-method"
+                                                  v-model="newSignInMethod"
+                                                  name="sign-in-method"
+                                                  class="mt-2 block w-full rounded-md border-0 bg-white/5 text-gray-800 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:text-white sm:text-sm sm:leading-6 [&_*]:text-black"
+                                                >
+                                                  <option
+                                                    v-for="method in SIGN_IN_METHODS"
+                                                    :key="method"
+                                                    :value="method"
+                                                  >
+                                                    {{ SIGN_IN_METHOD_LABELS[method] }}
+                                                  </option>
+                                                </select>
+                                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                                  An account signs in through one method.
+                                                  <span v-if="editLocalPasswordActive">
+                                                    The local password still works until the first sign-in through this
+                                                    method.
+                                                  </span>
+                                                  <span v-else-if="newSignInMethod === 'local'">
+                                                    Set a password below if the account has none.
+                                                  </span>
+                                                </p>
+                                              </template>
+
                                               <!-----------------------------------------UserRoles---------------------------------------------------------->
                                               <br />
                                               <Listbox
@@ -641,6 +675,7 @@ import {
 } from "@heroicons/vue/24/outline";
 import AdminSidebar from "~/components/AdminSidebar.vue";
 import { useNotificationStore } from "~/stores/NotificationStore";
+import { SIGN_IN_METHODS, SIGN_IN_METHOD_LABELS } from "~/types/auth";
 
 const notificationStore = useNotificationStore();
 const timeZones = Intl.supportedValuesOf("timeZone");
@@ -663,6 +698,8 @@ const newReset = ref("");
 const newConfirm = ref("");
 const newPassword = ref("");
 const newRoleId = ref(0);
+const newSignInMethod = ref("local");
+const editLocalPasswordActive = ref(false);
 const newRoleName = ref();
 const flag = ref(true);
 const editTimezoneName = ref();
@@ -730,6 +767,7 @@ async function editUser() {
         email: newEmail.value,
         UserRoleId: newRoleId.value,
         timezone: editTimezoneName.value,
+        signInMethod: newSignInMethod.value,
       },
     });
     if (newReset.value && newConfirm.value && newReset.value === newConfirm.value) {
