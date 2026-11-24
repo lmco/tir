@@ -43,6 +43,5 @@ export const up = async ({ context: sequelize }) => {
   }
 };
 
-export const down = async ({ context: sequelize }) => {
-  await sequelize.query(`DELETE FROM "TirConfigs" WHERE key LIKE 'auth:%:uid'`);
-};
+// An identifier is permanent, so a down followed by an up must not hand out new ones.
+export const down = async () => {};

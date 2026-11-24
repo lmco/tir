@@ -43,6 +43,6 @@ export const up = async ({ context: sequelize }) => {
   }
 };
 
-export const down = async ({ context: sequelize }) => {
-  await sequelize.query(`DELETE FROM "TirConfigs" WHERE key LIKE '%:requireVerifiedEmail'`);
-};
+// Nothing marks which rows up inserted, and deleting every row would also drop a value an
+// admin saved later, which the next up would then replace with off.
+export const down = async () => {};
