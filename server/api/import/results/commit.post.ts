@@ -6,6 +6,7 @@ import { ChecklistV3 } from "../../../utils/checklist_v3";
 import { importXccdf } from "../../../utils/xccdf";
 import { System } from "../../../../db/models";
 import { importNessus } from "~/server/utils/nessus";
+const MAX_IMPORT_FILE_BYTES = 100 * 1024 * 1024;
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -80,7 +81,7 @@ export default defineEventHandler(async (event) => {
       statusMessage: "System does not belong to this Boundary.",
     });
   }
-    const updateSystemLastUpdate = async (systemIds: number[]) => {
+  const updateSystemLastUpdate = async (systemIds: number[]) => {
     if (!systemIds.length) return;
 
     await System.update(
@@ -100,11 +101,30 @@ export default defineEventHandler(async (event) => {
         statusMessage: "Invalid analysis file ID. Please re-upload.",
       });
     }
-    const fileData = fs.readFileSync(file.path, "utf8");
+    
     const assignment = receivedAssignments.find((a: any) => a.fileId === file.fileId);
     const autoMatch = autoMatched.find((a: any) => a.fileId === file.fileId);
 
     const systemId = Number(assignment?.systemId ?? autoMatch?.systemId);
+
+    const hasNessusMatches =
+      file.ext === ".nessus" &&
+      [...receivedAssignments, ...autoMatched].some(
+        (match: any) => match.type === "nessus" && match.fileId === file.fileId,
+      );
+
+    if (!systemId && !hasNessusMatches) {
+      continue;
+    }
+
+    if (fs.statSync(file.path).size > MAX_IMPORT_FILE_BYTES) {
+      throw createError({
+        statusCode: 413,
+        statusMessage: `File too large to import: ${file.originalName}`,
+      });
+    }
+
+    const fileData = fs.readFileSync(file.path, "utf8");
 
     if (file.ext === ".ckl") {
       if (!systemId) continue;
@@ -121,17 +141,15 @@ export default defineEventHandler(async (event) => {
 
     if (file.ext === ".nessus") {
       const autoMatches = autoMatched
-        .filter((match: any) =>
-          match.type === "nessus" && match.fileId === file.fileId
-        )
+        .filter((match: any) => match.type === "nessus" && match.fileId === file.fileId)
         .map((match: any) => ({
           SystemId: Number(match.systemId),
           NessusHostName: match.hostName,
         }));
 
       const assignedMatches = receivedAssignments
-        .filter((assignment: any) =>
-          assignment.type === "nessus" && assignment.fileId === file.fileId
+        .filter(
+          (assignment: any) => assignment.type === "nessus" && assignment.fileId === file.fileId,
         )
         .map((assignment: any) => ({
           SystemId: Number(assignment.systemId),

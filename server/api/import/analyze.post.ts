@@ -30,6 +30,7 @@ export default defineEventHandler(async (event) => {
   fs.mkdirSync(extractedDir, { recursive: true });
 
   try {
+    await userCheck(event);
     const body = await processNodeRequest(event.node.req, uploadsDir);
 
     const boundaryId = Array.isArray(body.BoundaryId) ? body.BoundaryId[0] : body.BoundaryId;
@@ -167,8 +168,15 @@ export default defineEventHandler(async (event) => {
     }));
 
     for (const file of normalizedFiles) {
-      const content = fs.readFileSync(file.path, "utf-8");
+      if (fs.statSync(file.path).size > MAX_IMPORT_FILE_BYTES) {
+        throw createError({
+          statusCode: 413,
+          statusMessage: `File too large to analyze: ${file.originalName}`,
+        });
+      }
+
       const sourceName = getSourceName(file.relativePath, file.originalName);
+      const content = file.ext === ".xml" ? "" : fs.readFileSync(file.path, "utf-8");
       if (file.ext === ".nessus") {
         const nessusResult = await processNessus(content, systemList);
 
@@ -397,6 +405,7 @@ const safeJoin = (baseDir: string, entryName: string): string => {
 
 const MAX_ZIP_ENTRIES = 5000;
 const MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024; // 1 GB
+const MAX_IMPORT_FILE_BYTES = 100 * 1024 * 1024;
 
 const extractFilesFromZip = async (
   sourceZip: string,
