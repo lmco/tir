@@ -89,9 +89,8 @@ exists, bound or not, and cannot be taken as a `primaryEmail`.
 Phase 1 lands as one change: a single migration introduces Identity and moves
 the credentials onto it, and all four providers switch to it together, rather
 than slicing provider by provider, so the schema changes once. The external
-keys are stored only for accounts that have signed in since lmco/tir#14 (ADR
-0004), so the migration cannot fill them all in. How existing logins cross the
-cutover is ADR 0003.
+keys are not stored today, so the migration cannot fill them in. How existing
+logins cross the cutover is ADR 0003.
 
 Linking is explicit. Apart from the placeholder bind in ADR 0003, an identity
 TIR does not recognise is never attached to a User because its email matches
@@ -210,8 +209,8 @@ Identities disagree changes no role.
   provider configuration today, and the secret prompt and the audit entry are
   what make it visible.
 - Bad, because a provider cannot be deleted while it holds every working
-  Identity of the last Admin who can sign in, so retiring it waits until
-  another Admin can sign in elsewhere.
+  Identity of the last Admin who can sign in, so retiring it waits until that
+  Admin or another holds a working Identity elsewhere.
 - Bad, because all four providers must be rewired to resolve via Identity; this
   is a prerequisite phase (Phase 1) before user-merge.
 - Bad, because a role granted inside TIR to a user of a provider with group
