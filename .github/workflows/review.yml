@@ -54,7 +54,7 @@ jobs:
           fi
           jq -rs '
               [ .[][]
-                | select(.user.type == "User" and (.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")))
+                | select(.user.type == "User")
                 | .user.login ]
               | unique[]' "$RUNNER_TEMP/review/comments.json" > "$RUNNER_TEMP/review/candidates.txt"
           : > "$RUNNER_TEMP/review/writers.txt"
