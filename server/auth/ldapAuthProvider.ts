@@ -109,8 +109,7 @@ export class LDAPAuthProvider extends AuthProvider {
         throw new H3Error("Unauthorized: You do not belong to any permitted groups.");
       }
 
-      const external = { providerUid: this.config.uid, key: ldapUser.dn };
-      return this.finalizeLogin(event, { email, firstName, lastName }, "ldap", userRoleId, external);
+      return this.finalizeLogin(event, { email, firstName, lastName }, "ldap", userRoleId);
     } catch (error: any) {
       if (error instanceof H3Error) throw error;
       logger.info({
@@ -193,8 +192,7 @@ export class LDAPAuthProvider extends AuthProvider {
       }
 
       const profile = this.extractADProfile(adUser, username, baseDn);
-      const external = { providerUid: this.config.uid, key: adUser.dn };
-      return this.finalizeLogin(event, profile, "ldap", userRoleId, external);
+      return this.finalizeLogin(event, profile, "ldap", userRoleId);
     } catch (error: any) {
       if (error instanceof H3Error) throw error;
       logger.info({ service: "auth", message: `AD auth failed for ${username}: ${error.message}` });

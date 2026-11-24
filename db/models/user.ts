@@ -24,8 +24,6 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare loginCount: CreationOptional<number>;
   declare lastLogin: CreationOptional<string>;
   declare creationMethod: CreationOptional<string>;
-  declare providerId: CreationOptional<string | null>;
-  declare externalKey: CreationOptional<string | null>;
   declare salt: CreationOptional<string>;
   declare lastUpdate: CreationOptional<string>;
   declare creationDate: CreationOptional<string>;
@@ -100,14 +98,6 @@ User.init(
       type: DataTypes.TEXT,
       allowNull: false,
       defaultValue: "local",
-    },
-    providerId: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    externalKey: {
-      type: DataTypes.TEXT,
-      allowNull: true,
     },
     salt: {
       type: DataTypes.TEXT,
