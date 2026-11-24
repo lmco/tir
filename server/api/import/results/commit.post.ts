@@ -142,7 +142,7 @@ export default defineEventHandler(async (event) => {
 
       if (nessusMatches.length > 0) {
         await importNessus(fileData, nessusMatches);
-        await updateSystemLastUpdate([systemId]);
+        await updateSystemLastUpdate(nessusMatches.map((match) => match.SystemId));
       }
     }
 

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { IncomingMessage } from "http";
 import { pipeline } from "stream/promises";
+import { Transform } from "stream";
 import formidable from "formidable";
 import * as yauzl from "yauzl";
 import { System } from "../../../db/models";
@@ -10,55 +11,6 @@ import { processChecklist } from "~/utils/checklist";
 import { processChecklistV3 } from "~/utils/checklistV3";
 
 export default defineEventHandler(async (event) => {
-  const body = await processNodeRequest(event.node.req);
-  const boundaryId = Array.isArray(body.BoundaryId) ? body.BoundaryId[0] : body.BoundaryId;
-  if (!body.BoundaryId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "BoundaryId required.",
-    });
-  }
-  if (!body.files || body.files.length === 0) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "No files uploaded.",
-    });
-  }
-  const checkResult = await userCheck(event, undefined, boundaryId, undefined);
-  if (!checkResult.BoundaryRoleId) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: "You do not have access to this Boundary.",
-    });
-  }
-  if (checkResult.BoundaryRoleId === 4) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: "Reviewers are unable to edit Boundaries",
-    });
-  }
-
-  const systemList = await System.findAll({ where: { BoundaryId: boundaryId } });
-  const analyzableFiles: Array<{
-    originalName: string;
-    relativePath: string;
-    path: string;
-    ext: string;
-  }> = [];
-
-  const discoveredFiles: {
-    originalName: string;
-    relativePath: string;
-    path: string;
-    ext: string;
-  }[] = [];
-
-  const relativePaths = Array.isArray(body.relativePaths)
-    ? body.relativePaths
-    : body.relativePaths
-      ? [body.relativePaths]
-      : [];
-
   const config = useRuntimeConfig();
   const analysisId = crypto.randomUUID();
 
@@ -69,11 +21,67 @@ export default defineEventHandler(async (event) => {
   const uploadsDir = path.join(sessionDir, "uploads");
   const extractedDir = path.join(sessionDir, "extracted");
 
+  const zipBudget = {
+    entryCount: 0,
+    totalBytes: 0,
+  };
+
   fs.mkdirSync(uploadsDir, { recursive: true });
   fs.mkdirSync(extractedDir, { recursive: true });
 
-  console.log("Starting Upload");
   try {
+    const body = await processNodeRequest(event.node.req, uploadsDir);
+
+    const boundaryId = Array.isArray(body.BoundaryId) ? body.BoundaryId[0] : body.BoundaryId;
+    if (!body.BoundaryId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "BoundaryId required.",
+      });
+    }
+    if (!body.files || body.files.length === 0) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "No files uploaded.",
+      });
+    }
+    const checkResult = await userCheck(event, undefined, boundaryId, undefined);
+    if (!checkResult.BoundaryRoleId) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: "You do not have access to this Boundary.",
+      });
+    }
+    if (checkResult.BoundaryRoleId === 4) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: "Reviewers are unable to edit Boundaries",
+      });
+    }
+
+    const systemList = await System.findAll({ where: { BoundaryId: boundaryId } });
+    const analyzableFiles: Array<{
+      originalName: string;
+      relativePath: string;
+      path: string;
+      ext: string;
+    }> = [];
+
+    const discoveredFiles: {
+      originalName: string;
+      relativePath: string;
+      path: string;
+      ext: string;
+    }[] = [];
+
+    const relativePaths = Array.isArray(body.relativePaths)
+      ? body.relativePaths
+      : body.relativePaths
+        ? [body.relativePaths]
+        : [];
+
+    console.log("Starting Upload");
+
     const uploadedFiles = body.files;
     const supportedExtensions = new Set([".xml", ".cklb", ".ckl", ".nessus", ".zip"]);
 
@@ -113,7 +121,7 @@ export default defineEventHandler(async (event) => {
       });
       if (ext === ".zip") {
         const zipDir = path.join(extractedDir, `zip-${i}`);
-        const extractedFiles = await extractFilesFromZip(savedPath, zipDir);
+        const extractedFiles = await extractFilesFromZip(savedPath, zipDir, zipBudget);
 
         discoveredFiles.push(...extractedFiles);
 
@@ -134,7 +142,6 @@ export default defineEventHandler(async (event) => {
     }
 
     if (analyzableFiles.length === 0) {
-      fs.rmSync(sessionDir, { recursive: true, force: true });
       throw createError({
         statusCode: 400,
         statusMessage:
@@ -388,9 +395,13 @@ const safeJoin = (baseDir: string, entryName: string): string => {
   return resolvedTarget;
 };
 
+const MAX_ZIP_ENTRIES = 5000;
+const MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024; // 1 GB
+
 const extractFilesFromZip = async (
   sourceZip: string,
   outputDirectory: string,
+  zipBudget: { entryCount: number; totalBytes: number },
 ): Promise<{ path: string; relativePath: string; originalName: string; ext: string }[]> => {
   const extractedFiles: {
     path: string;
@@ -399,14 +410,27 @@ const extractFilesFromZip = async (
     ext: string;
   }[] = [];
   const extractedPaths = new Set<string>();
+  const supportedExtensions = new Set([".ckl", ".cklb", ".xml", ".nessus"]);
   const zip = await openZip(sourceZip);
   try {
     await new Promise<void>((resolve, reject) => {
-      zip.readEntry();
-
       zip.on("entry", (entry) => {
         try {
+          zipBudget.entryCount++;
+
+          if (zipBudget.entryCount > MAX_ZIP_ENTRIES) {
+            throw new Error("ZIP contains too many entries.");
+          }
+
           if (entry.fileName.endsWith("/")) {
+            zip.readEntry();
+            return;
+          }
+
+          const ext = path.extname(entry.fileName).toLowerCase();
+          const isLog = path.basename(entry.fileName).toLowerCase() === "evaluate-stig.log";
+
+          if (!supportedExtensions.has(ext) && !isLog) {
             zip.readEntry();
             return;
           }
@@ -420,7 +444,9 @@ const extractFilesFromZip = async (
 
           extractedPaths.add(destination);
 
-          const ext = path.extname(entry.fileName).toLowerCase();
+          if (zipBudget.totalBytes + entry.uncompressedSize > MAX_EXTRACTED_BYTES) {
+            throw new Error("ZIP exceeds the maximum extracted size.");
+          }
 
           fs.mkdirSync(path.dirname(destination), { recursive: true });
 
@@ -430,7 +456,19 @@ const extractFilesFromZip = async (
               return;
             }
 
-            pipeline(readStream, fs.createWriteStream(destination))
+            const sizeLimiter = new Transform({
+              transform(chunk, encoding, callback) {
+                zipBudget.totalBytes += chunk.length;
+
+                if (zipBudget.totalBytes > MAX_EXTRACTED_BYTES) {
+                  callback(new Error("ZIP exceeds the maximum extracted size."));
+                } else {
+                  callback(null, chunk);
+                }
+              },
+            });
+
+            pipeline(readStream, sizeLimiter, fs.createWriteStream(destination))
               .then(() => {
                 extractedFiles.push({
                   path: destination,
@@ -450,6 +488,7 @@ const extractFilesFromZip = async (
 
       zip.on("end", resolve);
       zip.on("error", reject);
+      zip.readEntry();
     });
   } finally {
     zip.close();
@@ -460,12 +499,13 @@ const extractFilesFromZip = async (
 /**
  * @param {import('http').IncomingMessage} req
  */
-function processNodeRequest(req: IncomingMessage): Promise<Record<string, any>> {
+function processNodeRequest(req: IncomingMessage, uploadDir: string,): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
     /** @see https://github.com/node-formidable/formidable/ */
     const form = formidable({
       multiples: true,
       maxFileSize: 350 * 1024 * 1024,
+      uploadDir,
     });
 
     form.parse(req, (error, fields: Record<string, any>, files: Record<string, any>) => {
