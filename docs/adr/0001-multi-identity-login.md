@@ -169,7 +169,11 @@ and so is a merge that would retire that Admin (ADR 0002). Lowering that
 Admin's role and deleting that Admin's account are refused in the same way.
 Removing that Admin's last working Identity is already refused by the rule
 above. This is a lockout guard and not a trust rule. It does not limit which
-Admin may change whose logins.
+Admin may change whose logins. The guard covers actions taken inside TIR. It
+does not cover the role a provider's claims grant at login, since the provider
+is the authority on that role. When a provider's group mappings lower the last
+Admin at their next login, TIR has no Admin until someone the provider maps to
+Admin signs in, and the fix is made at the provider.
 
 Provider claims are authoritative for the Identity they come from and are
 re-synced on every login, not only when the account is created. Each login

@@ -22,8 +22,8 @@ providers stays on the respective Identity rows and is not merged.
 
 ## Decision Drivers
 
-- A merge must not silently strip access the person only reached through one of
-  the accounts.
+- A merge must not silently strip boundary access the person only reached
+  through one of the accounts.
 - The result must respect the "an Admin is never a Member" invariant.
 - Conflict resolution should be predictable and not depend on an undefined role
   ordering.
