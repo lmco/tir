@@ -143,15 +143,18 @@ A wrongly bound person holds the account until the reset and can use it as its
 owner would. The reset therefore also undoes what it mechanically can. It
 removes every Identity connected to the account since the bind, ends the
 account's sessions, revokes every API token created since the bind, and clears
-a local password set since the bind, so that it has to be set again. Identities
-that a merge moved onto the account since the bind are kept, because they are
-another person's logins and removing them would leave that person with none. It
-goes by time and not by which session made the change, because a wrongly bound
-person can connect a second login and carry on through that one. Anything the
-owner added in that window goes too and can be added again. It does not undo
-other edits made since the bind, such as a changed `primaryEmail` or an
-Identity that was removed. The audit entry lists them for the resetting Admin,
-and the owner gets back in by binding the placeholder again.
+a local password set since the bind, so that it has to be set again. A local
+Identity that existed before the bind is kept without a password, and until
+one is set it does not count as a working Identity for the lockout guard or
+the last-working-Identity rule (ADR 0001). Identities that a merge moved onto
+the account since the bind are kept, because they are another person's logins
+and removing them would leave that person with none. It goes by time and not
+by which session made the change, because a wrongly bound person can connect a
+second login and carry on through that one. Anything the owner added in that
+window goes too and can be added again. It does not undo other edits made
+since the bind, such as a changed `primaryEmail` or an Identity that was
+removed. The audit entry lists them for the resetting Admin, and the owner
+gets back in by binding the placeholder again.
 
 An Admin cannot know a person's subject or DN in advance, so attaching an
 external Identity under ADR 0001 means choosing a provider and entering the
