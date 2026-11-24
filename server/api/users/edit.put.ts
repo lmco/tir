@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { User, Timezone } from "../../../db/models";
 
 export default defineEventHandler(async (event) => {
@@ -84,7 +85,8 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  user.save();
+  user.lastUpdate = DateTime.now().toISO();
+  await user.save();
 
   const attributes = Object.keys(body).filter((key) => key !== "id");
   const attributesString = attributes.join(", ");
