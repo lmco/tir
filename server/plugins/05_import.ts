@@ -5,8 +5,6 @@ import { CONTROL_DATA_IMPORT_SIGNAL, signalReady, waitForSignal } from "../utils
 export default defineNitroPlugin(async () => {
   try {
     await waitForSignal("db");
-    // For testing, waiting 100 seconds
-    await new Promise((resolve) => setTimeout(resolve, 100_000));
     const files = await fs.readdir("./lib/data/800-53");
     for (const file of files) {
       const filePath = `./lib/data/800-53/${file}`;
