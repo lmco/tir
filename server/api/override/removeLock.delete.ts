@@ -1,53 +1,46 @@
-import { Boundary_User, BoundaryRole, System } from "~/db/models";
-import { Boundary } from "~/db/models/boundary";
 import { StigOverride } from "~/db/models/stigOverride";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const systemId = body.systemId;
 
-  const rawToken = getCookie(event, "tirtoken");
-  let userId: number;
-
-  userId = 1;
-
-  if (!systemId) {
+  if (!body.systemId) {
     throw createError({
-      statusCode: 399,
-      statusMessage: `SystemId required.`,
+      statusCode: 400,
+      statusMessage: `systemId required.`,
     });
   }
 
-  const system = await System.findOne({
-    include: {
-      model: Boundary,
-      include: [
-        {
-          model: Boundary_User,
-          include: [{ model: BoundaryRole }],
-        },
-      ],
-    },
+  const systemId = body.systemId;
+  const checkResult = await userCheck(event, systemId, undefined, undefined);
+
+  if (!checkResult.BoundaryRoleId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Not a member of the Boundary",
+    });
+  }
+  if (checkResult.BoundaryRoleId === 4) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Reviewers are unable to remove override locks",
+    });
+  }
+  if (!body.overrideType || !body.stigDatumId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `overrideType and stigDatumId are both required.`,
+    });
+  }
+  const overrideType = body.overrideType;
+  const stigDatumId = body.stigDatumId;
+
+  const removed = await StigOverride.destroy({
     where: {
-      id: systemId,
+      type: overrideType,
+      SystemId: systemId,
+      StigDatumId: stigDatumId,
     },
   });
 
-  if (!system) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Unable to find System`,
-    });
-  }
-  const boundaryUser = system?.Boundary?.Boundary_User?.find(
-    (boundaryUser) => boundaryUser.id === userId,
-  );
-
-  if (boundaryUser) {
-    console.log("foundUser");
-  }
-
-  await StigOverride.destroy({ where: { StigDatumId: body.id } });
-
-  return { success: true };
+  return { success: true, removed };
 });
