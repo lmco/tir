@@ -168,15 +168,24 @@ export default defineEventHandler(async (event) => {
     }));
 
     for (const file of normalizedFiles) {
-      if (fs.statSync(file.path).size > MAX_IMPORT_FILE_BYTES) {
-        throw createError({
-          statusCode: 413,
-          statusMessage: `File too large to analyze: ${file.originalName}`,
-        });
+      const fd = fs.openSync(file.path, "r");
+
+      let content: string;
+
+      try {
+        if (fs.fstatSync(fd).size > MAX_IMPORT_FILE_BYTES) {
+          throw createError({
+            statusCode: 413,
+            statusMessage: `File too large to analyze: ${file.originalName}`,
+          });
+        }
+
+        content = file.ext === ".xml" ? "" : fs.readFileSync(fd, "utf-8");
+      } finally {
+        fs.closeSync(fd);
       }
 
       const sourceName = getSourceName(file.relativePath, file.originalName);
-      const content = file.ext === ".xml" ? "" : fs.readFileSync(file.path, "utf-8");
       if (file.ext === ".nessus") {
         const nessusResult = await processNessus(content, systemList);
 
