@@ -44,5 +44,6 @@ export const up = async ({ context: sequelize }) => {
 };
 
 // Nothing marks which rows up inserted, and deleting every row would also drop a value an
-// admin saved later, which the next up would then replace with off.
+// admin saved later, which the next up would then replace with off. The AuthConfigKeyFormat
+// down removes these rows with the rest of each provider's keys.
 export const down = async () => {};

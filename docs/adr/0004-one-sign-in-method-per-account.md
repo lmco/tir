@@ -48,9 +48,10 @@ existing account that a different method created?
 ## Decision Outcome
 
 Chosen option: "One sign-in method per account", because it applies ADR 0001's
-rule that a matching email never links before the prove- ownership prompt
-exists, it needs no schema change, and its escape hatch is a deliberate action
-on the user record that ADR 0001 turns into attaching an Identity.
+rule that a matching email never links, across methods, before the prove-
+ownership prompt exists, it needs no schema change, and its escape hatch is a
+deliberate action on the user record that ADR 0001 turns into attaching an
+Identity.
 
 Each User has exactly one sign-in method, recorded in the existing
 `creationMethod` column as `local`, `ldap`, `oidc` or `oauth`, with null read
@@ -145,7 +146,8 @@ signs the user in and LDAP is refused.
 ### One sign-in method per account
 
 - Good, because it is the smallest change that closes the hole, and its rule
-  that a matching email never links is one the final design keeps.
+  that a matching email never links across methods is one the final design
+  keeps.
 - Good, because every affected non-Admin user can be resolved with one field.
 - Bad, because dual-method users lose a method until someone acts.
 

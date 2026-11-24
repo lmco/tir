@@ -44,4 +44,5 @@ export const up = async ({ context: sequelize }) => {
 };
 
 // An identifier is permanent, so a down followed by an up must not hand out new ones.
+// The AuthConfigKeyFormat down removes these rows with the rest of each provider's keys.
 export const down = async () => {};
