@@ -73,14 +73,12 @@ needs the provider's secret entered again, as lmco/tir#14 requires, and writes
 an audit entry. A provider that is meant to be a different one is deleted and
 added anew.
 
-Deleting a provider ends the login of everyone who signs in through it, and the
-delete warns of that. It is refused while it would strand a User the user
-editor is closed for, meaning an Admin or a User holding an Admin-mapped
-Identity whose working Identities are all at that provider. Each of them first
-needs a working Identity elsewhere, meaning a local one or one at a provider
-that still exists, because no Admin could restore their access. Any other User
-left without a working login is helped by an Admin attaching a new one. The
-Identities of a deleted provider stay on their accounts and no longer resolve.
+Deleting a provider ends the login of everyone who signs in through it, and
+the delete warns of that. A User left without a working login, an Admin
+included, is helped by an Admin attaching a new one. The delete is refused
+only when it would leave TIR with no Admin who can sign in, which is the
+lockout guard below. The Identities of a deleted provider stay on their
+accounts and no longer resolve.
 
 The User keeps a single `primaryEmail` for display and notifications, which is
 today's `email` column under the name this ADR uses for it. It stays unique
@@ -91,8 +89,9 @@ exists, bound or not, and cannot be taken as a `primaryEmail`.
 Phase 1 lands as one change: a single migration introduces Identity and moves
 the credentials onto it, and all four providers switch to it together, rather
 than slicing provider by provider, so the schema changes once. The external
-keys are not stored today, so the migration cannot fill them in. How existing
-logins cross the cutover is ADR 0003.
+keys are stored only for accounts that have signed in since lmco/tir#14 (ADR
+0004), so the migration cannot fill them all in. How existing logins cross the
+cutover is ADR 0003.
 
 Linking is explicit. Apart from the placeholder bind in ADR 0003, an identity
 TIR does not recognise is never attached to a User because its email matches
@@ -135,75 +134,49 @@ email, from their profile page, and can remove one of their own Identities
 there, except the last working one. Turning the switch off asks the Admin to
 confirm that first-time users of that provider will be rejected.
 
-An Admin can also attach an Identity to a User, or remove one, from the user
+An Admin can also attach an Identity to any User, or remove one, from the user
 editor. This covers a person who cannot prove ownership themselves, such as a
 forgotten local password or an account whose only credential lives at another
-provider. The User must be a non-Admin, matching the merge rule in ADR 0002,
-and must hold no Admin-mapped Identity, a term defined below. So an Admin
-account, or one holding an Admin-mapped Identity, is never taken over through
-an identity an Admin attached, and the user editor cannot take an Admin-mapped
-Identity off one User and attach it to another. Such an Identity moves only by
-a merge its holder signs in to confirm (ADR 0002). A User's last working
-Identity cannot be removed, so removing an Identity never leaves an account
-that nobody can sign in to. Working has the meaning given for deleting a
-provider, so an Identity at a deleted provider does not count. The one
-exception is a merge source, which ADR 0002 retires with no Identities. Re-sync
-still applies to an attached Identity, under the role rules below. If its
-provider claims map to Admin, the User is promoted at the next login, exactly
-as that identity would receive Admin on a new account, because the provider is
-the authority for claim-mapped roles. The promotion waits when another of the
-User's Identities grants a different role, as it does for any User whose
-Identities disagree. The action is audit-logged.
+provider. The User may be an Admin. Admins are trusted with each other's
+accounts, as they already are through password reset and provider
+configuration. Every attach and removal writes an audit entry that names who
+made it and on which account, and that entry is what makes a takeover visible.
+A User's last working Identity cannot be removed, so removing an Identity
+never leaves an account that nobody can sign in to. A working Identity is a
+local one or one at a provider that still exists. The one exception is a merge
+source, which ADR 0002 retires with no Identities. Re-sync still applies to an
+attached Identity, under the role rules below. If its provider claims map to
+Admin, the User is promoted at the next login, exactly as that identity would
+receive Admin on a new account, because the provider is the authority for
+claim-mapped roles. The promotion waits when another of the User's Identities
+grants a different role, as it does for any User whose Identities disagree.
 
 An Admin attaches an external Identity by choosing a provider and entering the
 person's email there, which creates a placeholder that binds at the person's
 first login through that provider (ADR 0003). The attach is rejected when that
-email is another User's `primaryEmail` or is held by another User's placeholder
-Identity, bound or not. Where the provider's verified-email setting is on, a
-placeholder binds only on an address the provider reports as verified (ADR
-0003). A local Identity is attached by setting a password. An account an Admin
-creates is given at least one Identity in one of these two ways. That holds
-when the account is created as an Admin too, since a new account has no owner
-yet whose logins could be taken.
+email is another User's `primaryEmail` or is held by another User's
+placeholder Identity, bound or not. Where the provider's verified-email
+setting is on, a placeholder binds only on an address the provider reports as
+verified (ADR 0003). A local Identity is attached by setting a password. An
+account an Admin creates is given at least one Identity in one of these two
+ways.
 
-Stored claims are the ones an Identity's last login reported. An Identity is
-Admin-mapped when its stored claims map to Admin, or while it carries an
-Admin-mapped mark. ADR 0003 puts a mark on a placeholder, and a demotion by
-someone else puts one on every Identity of the account.
-
-A demotion must not open a way around the rule below. When an Admin's role is
-lowered to User by someone else, every Identity of that account is marked
-Admin-mapped, and those demotion marks clear when that person next signs in
-through any of them. A placeholder's own mark from ADR 0003 is separate and
-clears only when that placeholder binds. Lowering your own role sets no mark.
-So another Admin cannot demote a colleague, attach a login to the account and
-promote it back. The protection is as strong as a sign-in and no stronger. An
-Admin who sets the local password of such an account can sign in to it, which
-is the password exception below.
-
-The rule across linking, the user editor, and merge (ADR 0002) is that the
-Identities of an Admin, or of a User holding an Admin-mapped Identity, change
-only after that person signs in to the account. Setting the password of an
-existing local Identity is outside that rule. An Admin can set another Admin's
-local password, as today, and so sign in as them. That stays because it is how
-an Admin locked out of a local Identity recovers. Editing such a User's
-`primaryEmail` is outside the rule in the same way, since it changes the
-address their local Identity signs in with. ADR 0003 adds two exceptions for
-the cutover: resetting a bound placeholder, and attaching to an Admin the
-cutover left with no Identity at all. Repointing a provider, described above,
-is a configuration change and is not counted here, though it has the same
-effect when the new server is a different one. Phase 1 does change one case.
-Today an Admin can give a User who has only external logins a local password
-and with it a local login, under ADR 0004 by switching the account to Local
-first. Under this ADR that is attaching a local Identity and follows the attach
-rules above, so it is rejected for an Admin or a User holding an Admin-mapped
-Identity.
+One guard applies to every action in this ADR, ADR 0002 and ADR 0003. An
+action is refused when it would leave TIR with no Admin who can sign in,
+meaning no User with the Admin role who holds a working Identity. Deleting the
+provider that holds every working Identity of the last such Admin is refused,
+and so is a merge that would retire that Admin (ADR 0002). Lowering that
+Admin's role and deleting that Admin's account are refused in the same way.
+Removing that Admin's last working Identity is already refused by the rule
+above. This is a lockout guard and not a trust rule. It does not limit which
+Admin may change whose logins.
 
 Provider claims are authoritative for the Identity they come from and are
 re-synced on every login, not only when the account is created. Each login
 stores on that Identity the name the provider reports and its group
-memberships, so that claim-driven node membership can build on them later. The
-name stays on the Identity and does not overwrite the User's own name fields.
+memberships, so that claim-driven node membership can build on them later.
+Stored claims are the ones an Identity's last login reported. The name stays
+on the Identity and does not overwrite the User's own name fields.
 
 The global role follows the claims within three limits. A provider with no
 group mappings never changes it: a new account gets the User role and an
@@ -233,8 +206,8 @@ Identities disagree changes no role.
   provider configuration today, and the secret prompt and the audit entry are
   what make it visible.
 - Bad, because a provider cannot be deleted while it holds every working
-  Identity of an Admin or of a User holding an Admin-mapped Identity, so
-  retiring an identity provider can wait on that person.
+  Identity of the last Admin who can sign in, so retiring it waits until
+  another Admin can sign in elsewhere.
 - Bad, because all four providers must be rewired to resolve via Identity; this
   is a prerequisite phase (Phase 1) before user-merge.
 - Bad, because a role granted inside TIR to a user of a provider with group
@@ -245,21 +218,11 @@ Identities disagree changes no role.
   until an Admin corrects the address. Nothing is linked, which is the point of
   refusing email as a proof.
 - Bad, because an Admin who can attach an Identity can attach one of their own
-  to any non-Admin User and sign in as that User. An Admin can already do that
-  today by giving the account a local password, including for a User with only
-  external logins, so this is not a new level of trust, and the audit entry is
-  what makes it visible.
-- Bad, because an Admin who loses every credential cannot be helped by
-  attaching a new Identity. Another Admin resets their local password if they
-  have a local Identity, and an Admin with only external logins recovers at the
-  provider. ADR 0003 covers the one exception at the cutover.
-- Bad, because stored claims are those of an Identity's last login, so a User
-  whose provider no longer maps them to Admin stays under the Admin rules until
-  they sign in again. In the other direction, a User the provider has newly
-  mapped to Admin is not covered until a login stores that claim.
-- Bad, because an Admin demoted by someone else who never signs in again
-  stays under the Admin rules, so no Admin can attach a login to that account
-  or remove one. The account can still be deleted.
+  to any User, another Admin included, and sign in as that User. An Admin can
+  already do that today by setting the account's local password, so this is
+  not a new level of trust, and the audit entry is what makes it visible.
+- Good, because an Admin who loses every credential is helped by another Admin
+  attaching a new Identity, as any User is.
 - Bad, because removing a person from a provider's mapped groups closes only
   that provider. A User who also holds another Identity, such as a local
   password, can still sign in through it, so offboarding has to cover every
@@ -286,10 +249,10 @@ Identities disagree changes no role.
   to the same Identities, and the edit writes an audit entry. A provider added
   after a delete has a new identifier and resolves to none of the old
   Identities, also when it reuses the config id.
-- Deleting a provider warns that its Users lose that login and is refused
-  while every working Identity of an Admin, or of a User holding an
-  Admin-mapped Identity, is at that provider. An Identity at a provider that
-  was deleted earlier does not count as working.
+- Deleting a provider warns that its Users lose that login. It is refused only
+  when it would leave no User with the Admin role holding a working Identity.
+  An Identity at a provider that was deleted earlier does not count as
+  working.
 - An unknown identity is attached to a User only after the person signs in
   with one of that User's existing credentials, or when an Admin attaches it,
   and never because the email addresses match. No confirmation email links a
@@ -308,17 +271,12 @@ Identities disagree changes no role.
   User's `primaryEmail` binds nothing and is asked to sign in to that other
   User. A placeholder a merge moved is not that case: its login is asked to
   sign in to the target, which binds it.
-- An Admin attaching or removing an Identity writes an audit entry.
-- From the user editor, attaching an Identity to or removing one from an Admin,
-  or a User holding an Admin-mapped Identity, is rejected.
-  So is an Admin setting a local password for such a User who has no local
-  Identity. ADR 0003 holds the one exception for an existing account, an Admin
-  the cutover left with no Identity at all.
-- After another Admin lowers an Admin's role, attaching an Identity to that
-  account or removing one from the user editor is rejected until that person
-  signs in. Lowering your own role sets no demotion mark, so
-  the user editor opens for the account only when it holds no other
-  Admin-mapped Identity.
+- An Admin attaching an Identity to any User, or removing one, is accepted for
+  an Admin's account as for any other and writes an audit entry naming who
+  made the change and on which account.
+- An action that would leave no User with the Admin role holding a working
+  Identity is refused: deleting a provider, removing an Identity, or a merge
+  (ADR 0002).
 - Removing a User's last working Identity is rejected, and an Identity at a
   deleted provider does not count as working. A signed-in user, Admin or not,
   can remove one of their own Identities from the profile page but not the
@@ -361,8 +319,7 @@ mitre/tir discussion 197. Related: mitre/tir#171 (multiple SSO methods at once),
 registration), mitre/tir#183. Until this lands, ADR 0004 holds an interim rule
 of one sign-in method per account and ships with lmco/tir#14. ADR 0003 covers
 how existing logins cross the Phase 1 cutover. It is proposed in lmco/tir#52,
-and this ADR relies on it for the placeholder an Admin attach creates and for
-the placeholder's Admin-mapped mark.
+and this ADR relies on it for the placeholder an Admin attach creates.
 
 A possible later addition, behind its own option: with the create switch off,
 hold an unknown person's account pending Admin approval instead of rejecting

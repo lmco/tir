@@ -28,8 +28,8 @@ providers stays on the respective Identity rows and is not merged.
 - Conflict resolution should be predictable and not depend on an undefined role
   ordering.
 - An Admin needs visibility and an override before committing.
-- A merge must not hand an Admin's logins to someone else without that Admin's
-  own consent.
+- A merge moves one person's logins onto another account, so it must leave a
+  record of who ran it.
 
 ## Considered Options
 
@@ -44,38 +44,20 @@ Chosen option: "Target-wins union", because it preserves every boundary the
 person could reach while keeping a deterministic default, with an escape hatch
 (per-role override in the preview) for the cases an Admin wants to change.
 
-The target (surviving User) must be a non-Admin and must hold no Admin-mapped
-Identity as ADR 0001 defines it, the same test ADR 0001 applies in the user
-editor, so a merge never adds logins to an account that is already an Admin or
-already holds an Admin-mapped Identity. The source may be any Role and its
-global Role is discarded. When the source holds an Identity whose stored claims
-map to Admin, that Identity moves with the rest, so the target is promoted at
-its next login through it, unless the target also holds an Identity that grants
-User, in which case ADR 0001 leaves the role unchanged until its open question
-on disagreeing Identities is settled. A promoted target is the case the open
-question under More Information covers.
+The target (surviving User) must be a non-Admin, because Members are unioned
+onto it and an Admin is never a Member. The source may be any Role and its
+global Role is discarded. When the source holds an Identity whose stored
+claims map to Admin, that Identity moves with the rest, so the target is
+promoted at its next login through it, unless the target also holds an
+Identity that grants User, in which case ADR 0001 leaves the role unchanged
+until its open question on disagreeing Identities is settled. A promoted
+target is the case the open question under More Information covers.
 
-When the source is an Admin, or holds an Admin-mapped Identity, the merge needs
-that person's own proof. It stays pending and changes nothing until they sign
-in with one of the source's credentials and confirm it, and the confirmation
-shows the target and the Identities the target already holds. On confirmation
-the target test runs again and the preview is recomputed. If the target no
-longer passes, or the preview differs from the one the merging Admin approved,
-nothing is committed and the merge goes back to that Admin. An Admin can cancel
-a pending merge and the source can decline it. A pending merge lapses if it is
-not confirmed within a period the feature issue sets, and a lapsed merge has to
-be requested again. A User can be the source or the target of only one pending
-merge at a time. Resetting a placeholder Identity of either User (ADR 0003)
-also cancels it.
-
-An Admin merging their own account gives the proof by being signed in to it.
-This keeps the ADR 0001 rule that an Admin's identities never move without that
-Admin proving ownership, and a sign-in is the only proof ADR 0001 accepts. The
-Admin-mapped test covers a source demoted just before the merge, whose claims
-would promote the target at its next login. The proof is as strong as a sign-in
-and no stronger. ADR 0001 leaves an Admin able to set another Admin's local
-password, so an Admin who does that to a source with a local Identity can sign
-in as it and confirm.
+An Admin can merge any source, another Admin's account included, and the
+source does not have to sign in or confirm. Admins are trusted with each
+other's accounts (ADR 0001), and the audit entry is what makes the move
+visible. A merge is refused when retiring the source would leave TIR with no
+Admin who can sign in, which is the lockout guard in ADR 0001.
 
 The source's Identities move to the target, so every login that reached the
 source now reaches the target. The one exception follows from ADR 0001 allowing
@@ -109,33 +91,19 @@ second account.
   preview.
 - Good, because the outcome is deterministic without needing a defined role
   ordering.
-- Good, because moving an Admin's logins by merge takes a sign-in to the source
-  and a confirmation that shows the target's Identities, so merge opens no way
-  into an Admin account that signing in did not already give.
-- Bad, because the proof inherits the local password exception in ADR 0001. An
-  Admin who sets the password of a source with a local Identity can confirm the
-  merge as that source.
-- Bad, because an Admin source with only external logins who can no longer sign
-  in cannot be merged, and ADR 0001 stops another Admin from clearing the way
-  by removing its Admin-mapped Identities.
+- Bad, because an Admin can merge another Admin's account into a non-Admin one
+  without that person taking part, which moves their logins and discards their
+  Admin role. The audit entry is what makes it visible.
 - Bad, because it depends on the Admin-is-not-a-Member invariant, which is
   enforced by separate work (API enforcement and SSO claim re-sync).
 - Neutral, because per-role override adds preview UI complexity.
 
 ### Confirmation
 
-- Merge rejects an Admin target, and a target holding an Admin-mapped
-  Identity.
-- Merging a source that is an Admin, or that holds an Admin-mapped Identity,
-  changes nothing until that person signs in with one of the source's
-  credentials and confirms.
-- A pending merge does not commit on confirmation when the target no longer
-  passes the target test or the preview has changed since the merging Admin
-  approved it.
-- Resetting a placeholder Identity of the source or the target (ADR 0003)
-  cancels a pending merge between them.
-- A pending merge past its period cannot be confirmed, and a merge naming a
-  User who is already in a pending merge is rejected.
+- Merge rejects an Admin target.
+- Merging a source that is an Admin commits without that person signing in.
+- A merge that would leave no User with the Admin role holding a working
+  Identity is rejected.
 - After the merge every external Identity the source held resolves to the
   target, and the source holds none. When both had a local Identity the
   source's is gone, its email and password no longer sign in, and the preview
