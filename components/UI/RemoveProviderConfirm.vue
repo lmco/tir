@@ -22,7 +22,7 @@
     <ModalDialog
       :show="open"
       :title="`Remove ${name}?`"
-      message="Users who sign in through this provider will no longer be able to sign in once the change is saved. TIR does not record which accounts use which provider, so it cannot list them."
+      message="Users who sign in through this provider will no longer be able to sign in once the change is saved."
       confirm-text="Remove"
       danger
       @confirm="confirm"

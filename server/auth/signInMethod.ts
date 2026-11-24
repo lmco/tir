@@ -44,7 +44,7 @@ function canSignIn(user: LockoutSubject, available: MethodAvailability): boolean
   return method !== "local" && available[method];
 }
 
-/** Whether at least one Admin has a way in. It judges by method, since accounts do not record a provider. */
+/** Whether at least one Admin has a way in. It judges by method, since any provider of an account's method lets it in. */
 export function anyAdminCanSignIn(users: LockoutSubject[], available: MethodAvailability): boolean {
   return users.some((u) => u.UserRoleId === ADMIN_ROLE_ID && canSignIn(u, available));
 }
