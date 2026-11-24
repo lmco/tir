@@ -161,7 +161,7 @@ export default defineEventHandler(async (event) => {
       name: "Client credentials",
       ok: false,
       message: clientId
-        ? "No secret available - enter the secret to test credentials. The saved secret only applies while the URL and client ID are unchanged."
+        ? "No secret available - enter the secret to test credentials. The saved secret only applies while the URL, client ID and TLS setting are unchanged."
         : "Client ID not configured",
     });
   } else {

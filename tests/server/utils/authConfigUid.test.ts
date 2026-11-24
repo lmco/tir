@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { loadAuthConfig, saveAuthConfig } from "../../../server/utils/config/authConfig";
+import {
+  loadAuthConfig,
+  providersNeedingSecretReentry,
+  saveAuthConfig,
+  storedLDAPPassword,
+  storedOIDCSecret,
+} from "../../../server/utils/config/authConfig";
 
 const store = vi.hoisted(() => new Map<string, string>());
 
@@ -62,5 +68,45 @@ describe("provider uid", () => {
     store.delete("auth:oidc:oidc-1:uid");
     await saveAuthConfig({ oidc: [oidc()] });
     expect(await savedUid()).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe("stored secret and TLS settings", () => {
+  beforeEach(() => store.clear());
+
+  const ldap = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "ldap-1",
+      label: "LDAP",
+      url: "ldaps://ldap.example.com",
+      bindDn: "cn=admin,dc=example,dc=com",
+      ssl: true,
+      sslInsecure: false,
+      sslCa: "",
+      passwordSet: true,
+      ...overrides,
+    }) as any;
+
+  test("an LDAP bind password is reused while the TLS settings match", async () => {
+    await saveAuthConfig({ ldap: [ldap({ password: "bind-secret" })] });
+    expect(await storedLDAPPassword(ldap())).toBe("bind-secret");
+    expect(await providersNeedingSecretReentry({ ldap: [ldap()] })).toEqual([]);
+  });
+
+  test.each([{ sslInsecure: true }, { ssl: false }, { sslCa: "other-ca" }])(
+    "an LDAP bind password is not reused after %o",
+    async (change) => {
+      await saveAuthConfig({ ldap: [ldap({ password: "bind-secret" })] });
+      expect(await storedLDAPPassword(ldap(change))).toBeUndefined();
+      expect(await providersNeedingSecretReentry({ ldap: [ldap(change)] })).toEqual(["LDAP"]);
+    },
+  );
+
+  test("an OIDC client secret is not reused once certificate checks are switched off", async () => {
+    const saved = oidc({ sslInsecure: false, secretSet: true });
+    await saveAuthConfig({ oidc: [{ ...saved, secret: "client-secret" }] });
+    expect(await storedOIDCSecret(saved)).toBe("client-secret");
+    expect(await storedOIDCSecret({ ...saved, sslInsecure: true })).toBeUndefined();
+    expect(await providersNeedingSecretReentry({ oidc: [{ ...saved, sslInsecure: true }] })).toEqual(["OIDC"]);
   });
 });

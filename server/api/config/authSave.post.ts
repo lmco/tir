@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
   if (reentry.length > 0) {
     throw createError({
       statusCode: 400,
-      message: `Re-enter the password or client secret for ${reentry.join(", ")}: the server address or client identity changed.`,
+      message: `Re-enter the password or client secret for ${reentry.join(", ")}: the server address, client identity or TLS settings changed.`,
     });
   }
 

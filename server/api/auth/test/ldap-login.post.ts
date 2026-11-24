@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       message:
-        "Bind password is required - enter it in the Password field. The saved password only applies while the URL and bind DN are unchanged.",
+        "Bind password is required - enter it in the Password field. The saved password only applies while the URL, bind DN and TLS settings are unchanged.",
     });
   }
 

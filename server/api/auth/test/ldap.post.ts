@@ -81,7 +81,7 @@ export default defineEventHandler(async (event) => {
         name: "Bind",
         ok: false,
         message:
-          "No password available - enter the password to test bind. The saved password only applies while the URL and bind DN are unchanged.",
+          "No password available - enter the password to test bind. The saved password only applies while the URL, bind DN and TLS settings are unchanged.",
       });
     } else {
       checks.push({ name: "Bind", ok: false, message: "Bind DN not configured" });

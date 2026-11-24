@@ -131,12 +131,13 @@ type SecretRule = {
   matchFields: string[];
 };
 
-// A stored secret is only reused while the fields that decide where it is sent, and as whom,
-// still match the saved provider. Otherwise an admin could repoint a provider at a host they
-// control and collect a secret they cannot read.
+// A stored secret is only reused while the fields that decide where it is sent, as whom, and
+// how the server is verified still match the saved provider. Otherwise an admin could repoint
+// a provider at a host they control, or switch certificate checks off, and collect a secret
+// they cannot read.
 const SECRET_RULES: Record<"ldap" | "oidc" | "oauth", SecretRule> = {
-  ldap: { indexKey: LDAP_INDEX_KEY, keyFn: ldapKey, schema: LDAP_PROVIDER_SCHEMA, secretField: "password", matchFields: ["url", "bindDn"] },
-  oidc: { indexKey: OIDC_INDEX_KEY, keyFn: oidcKey, schema: OIDC_PROVIDER_SCHEMA, secretField: "secret", matchFields: ["url", "clientId"] },
+  ldap: { indexKey: LDAP_INDEX_KEY, keyFn: ldapKey, schema: LDAP_PROVIDER_SCHEMA, secretField: "password", matchFields: ["url", "bindDn", "ssl", "sslInsecure", "sslCa"] },
+  oidc: { indexKey: OIDC_INDEX_KEY, keyFn: oidcKey, schema: OIDC_PROVIDER_SCHEMA, secretField: "secret", matchFields: ["url", "clientId", "sslInsecure"] },
   oauth: {
     indexKey: OAUTH_INDEX_KEY,
     keyFn: oauthKey,
@@ -166,12 +167,12 @@ async function storedSecretIfUnchanged(rule: SecretRule, submitted: Record<strin
   return unchanged ? secret : undefined;
 }
 
-/** The saved bind password, only while the submitted url and bindDn still match the saved provider. */
+/** The saved bind password, only while the submitted url, bindDn and TLS settings still match the saved provider. */
 export function storedLDAPPassword(submitted: Record<string, unknown>): Promise<string | undefined> {
   return storedSecretIfUnchanged(SECRET_RULES.ldap, submitted);
 }
 
-/** The saved client secret, only while the submitted url and clientId still match the saved provider. */
+/** The saved client secret, only while the submitted url, clientId and TLS setting still match the saved provider. */
 export function storedOIDCSecret(submitted: Record<string, unknown>): Promise<string | undefined> {
   return storedSecretIfUnchanged(SECRET_RULES.oidc, submitted);
 }
