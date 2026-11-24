@@ -127,14 +127,14 @@ and the claims the binding login stored, and ends the sessions opened through
 that Identity. The next matching login through a pinned provider then binds it
 again. The reset does not restore a global role the wrong bind changed. On a
 provider with group mappings the right login re-syncs it, and otherwise an
-Admin sets it. Only an Identity that began as a placeholder can be reset, and
-only an Admin can remove one. ADR 0001 lets a User remove their own Identities
-from the profile page, but not one that began as a placeholder, bound or not.
-Otherwise a wrongly bound person could connect a second login, remove the
-placeholder, and leave the Admin nothing to reset. A local Identity cannot,
-nor can an external one its owner connected while signed in, and a reset
-leaves a local password as it is unless it was set since the bind, as the next
-paragraph describes.
+Admin sets it. Only an Identity that began as a placeholder can be reset. A
+local Identity cannot be reset, nor can an external one its owner connected
+while signed in. This ADR also adds one limit to ADR 0001, which lets a User
+remove their own Identities from the profile page: an Identity that began as a
+placeholder, bound or not, can be removed only by an Admin. Otherwise a
+wrongly bound person could connect a second login, remove the placeholder, and
+leave the Admin nothing to reset. A reset leaves a local password as it is
+unless it was set since the bind, as the next paragraph describes.
 
 A wrongly bound person holds the account until the reset and can use it as its
 owner would. The reset therefore also undoes what it mechanically can. It
@@ -178,6 +178,11 @@ live account.
 - Bad, because a wrong bind can demote an Admin before anyone notices, and
   until the reset the wrongly bound person holds the account. The reset does
   not restore the role.
+- Bad, because a wrong bind on an Admin's placeholder, at a provider with no
+  group mappings, gives the wrongly bound person Admin rights until the reset.
+  The reset and its audit entry cover that account's own logins, tokens and
+  edits. What was done to other Users or to providers in that time is found in
+  the audit log and undone by hand.
 - Bad, because a stored password that ADR 0004 kept only as a fallback after a
   switch away from Local becomes a lasting local Identity, which stays until
   its owner removes it.
@@ -253,6 +258,9 @@ live account.
   bind it, as it would not reach the account today.
 - A User cannot remove an Identity that began as a placeholder from the
   profile page, bound or not. An Admin can.
+- After a reset, a local Identity that existed before the bind is kept without
+  a password and does not count as a working Identity until one is set. A
+  reset that would leave no Admin who can sign in is refused (ADR 0001).
 - A reset removes every Identity connected to the account since the
   placeholder bound, including one connected through a login that was itself
   connected since then, ends the account's sessions, revokes the API tokens
