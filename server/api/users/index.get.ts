@@ -21,6 +21,6 @@ export default defineEventHandler(async (event) => {
   return users.map((user) => {
     const { password, creationMethod, ...rest } = user.toJSON() as Record<string, any>;
     const signInMethod = accountMethod({ creationMethod });
-    return { ...rest, signInMethod, localPasswordActive: signInMethod !== "local" && Boolean(password) };
+    return { ...rest, signInMethod, hasLocalPassword: Boolean(password) };
   });
 });

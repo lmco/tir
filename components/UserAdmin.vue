@@ -94,7 +94,7 @@
                                       (newRoleName = person.UserRole.name),
                                       (selected = person.UserRole),
                                       (newSignInMethod = person.signInMethod ?? 'local'),
-                                      (editLocalPasswordActive = person.localPasswordActive === true),
+                                      (editHasLocalPassword = person.hasLocalPassword === true),
                                     ]
                                   "
                                   >Edit<span class="sr-only">, </span></a
@@ -403,7 +403,7 @@
                                                 </select>
                                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                                   An account signs in through one method.
-                                                  <span v-if="editLocalPasswordActive">
+                                                  <span v-if="newSignInMethod !== 'local' && editHasLocalPassword">
                                                     The local password still works until the first sign-in through this
                                                     method.
                                                   </span>
@@ -699,7 +699,7 @@ const newConfirm = ref("");
 const newPassword = ref("");
 const newRoleId = ref(0);
 const newSignInMethod = ref("local");
-const editLocalPasswordActive = ref(false);
+const editHasLocalPassword = ref(false);
 const newRoleName = ref();
 const flag = ref(true);
 const editTimezoneName = ref();
