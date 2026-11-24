@@ -24,12 +24,12 @@ export function getSignal(name: string): Signal {
 
     const signal: Signal = {
       promise,
-      resolve: function(this: Signal) {
-        this.isResolved = true;
+      resolve: () => {
+        signal.isResolved = true;
         resolveFn();
       },
-      reject: function(this: Signal, e?: unknown) {
-        this.isResolved = true;
+      reject: (e?: unknown) => {
+        signal.isResolved = true;
         rejectFn(e);
       },
       isResolved: false

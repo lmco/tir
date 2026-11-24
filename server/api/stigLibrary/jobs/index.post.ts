@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
     if (!signal.isResolved) {
       throw createError({
         statusCode: 409,
-        statusMessage: `Cannot start the import: Control Data Import signal is BUSY. Wait for it to finish.`,
+        statusMessage: `Cannot start the import: 800-53 control data is still loading. Try again shortly.`,
       });
     }
 
