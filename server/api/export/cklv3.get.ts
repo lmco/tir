@@ -1,5 +1,5 @@
 import {ZipFile} from 'yazl';
-import { System } from "../../../db/models";
+import { System, Boundary } from "../../../db/models";
 import { convertToCKL3 } from "../../utils/checklist_v3";
 
 export default defineEventHandler(async (event) => {
@@ -12,6 +12,14 @@ export default defineEventHandler(async (event) => {
 
 
   if (checkResult.BoundaryRoleId) {
+    const boundary = await Boundary.findByPk(query.BoundaryId as number);
+
+    if (!boundary) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "Boundary not found.",
+      });
+    }
     const system = await System.findAll({ where: { BoundaryId: query.BoundaryId as number } });
     // Get Checklist Array
     const checklists = await convertToCKL3(system, query.SingleStigPerCkl as string);
@@ -32,7 +40,12 @@ export default defineEventHandler(async (event) => {
       );
     }
     event.node.res.setHeader('Content-Type', 'application/zip');
-    event.node.res.setHeader('Content-Disposition', `attachment; filename="${query.BoundaryName}-ChecklistsV3.zip"`);
+    const filename = `${boundary.name}-ChecklistsV3.zip`;
+
+    event.node.res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
 
     zip.outputStream.pipe(event.node.res);
     zip.end();
