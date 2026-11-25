@@ -75,7 +75,7 @@ unioned, with the target's role winning on shared-node conflicts. The merge
 preview lists conflicts and allows per-role override. Eval and milestone
 assignments and notifications are reassigned and de-duped; source tokens are
 revoked and sessions invalidated; the target wins on preferences; the source is
-soft-retired with a `mergedIntoId`; the merge is audit-logged at `notice`.
+soft-retired and points at its target; the merge is audit-logged.
 
 The retired source keeps its `primaryEmail`. A first login whose email matches
 it is asked to sign in with one of the target's credentials, as ADR 0001 does
@@ -113,9 +113,9 @@ second account.
   of the target's credentials, also after a later reset.
 - When only the source had a local Identity, the target signs in locally with
   its own `primaryEmail` and the source's password.
-- The source is left soft-retired with `mergedIntoId` set and its tokens and
-  sessions invalidated.
-- An audit entry at `notice` records source, target, and any overrides.
+- The source is left soft-retired and pointing at its target, with its tokens
+  and sessions invalidated.
+- An audit entry records source, target, and any overrides.
 - A first login whose email matches a retired source's `primaryEmail` creates
   no account and is asked to prove ownership of the target. No User other than
   the target can take that address, and when the target does the retired row
