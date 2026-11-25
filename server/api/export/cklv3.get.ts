@@ -4,7 +4,7 @@ import { convertToCKL3 } from "../../utils/checklist_v3";
 
 export default defineEventHandler(async (event) => {
   const query = await getQuery(event);
-  const groupValue = query.groupValue === "host" ? "host" : "system";
+  const groupValue = query.groupValue === "system" ? "system" : "host";
   const checkResult = await userCheck(event, undefined, query.BoundaryId?.toString(), undefined);
   // Use query params to endpoint:
   //       singlestig   (true/false)

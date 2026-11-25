@@ -519,8 +519,8 @@ const extractLibrary = async (sourceZip: string, outputDirectory: string): Promi
       resolve(zipfile);
     });
   });
+  let fileIndex = 0;
   await new Promise<void>((resolve, reject) => {
-    zip.readEntry();
     zip.on("entry", (entry) => {
       try {
         if (entry.fileName.endsWith("/")) {
@@ -528,7 +528,7 @@ const extractLibrary = async (sourceZip: string, outputDirectory: string): Promi
           return;
         }
         if (path.extname(entry.fileName).toLowerCase() === ".json") {
-          const outPath = path.join(temp, path.basename(entry.fileName));
+          const outPath = path.join(temp, `${fileIndex++}-${path.basename(entry.fileName)}`);
           zip.openReadStream(entry, (err, readStream) => {
             if (err || !readStream) {
               reject(err ?? new Error("Unable to read ZIP entry"));
@@ -553,6 +553,8 @@ const extractLibrary = async (sourceZip: string, outputDirectory: string): Promi
     });
     zip.on("end", resolve);
     zip.on("error", reject);
+
+    zip.readEntry();
   });
   zip.close();
   fs.rmSync(sourceZip, { force: true });
