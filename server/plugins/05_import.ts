@@ -1,11 +1,12 @@
 import * as fs from "fs/promises";
 import { verifyControlData } from "../utils/importControl";
-import { waitForSignal } from "../utils/startupSync";
+import { CONTROL_DATA_IMPORT_SIGNAL, signalReady, waitForSignal } from "../utils/startupSync";
 
 export default defineNitroPlugin(async () => {
   try {
     await waitForSignal("db");
     const files = await fs.readdir("./lib/data/800-53");
+    
     for (const file of files) {
       const filePath = `./lib/data/800-53/${file}`;
       const result = await verifyControlData(filePath);
@@ -15,7 +16,13 @@ export default defineNitroPlugin(async () => {
     }
     logger.info({ service: "SCTM", message: "SCTM Imports Complete" });
   } catch (error) {
+    logger.error({ 
+      service: "SCTM", 
+      message: "SCTM import failed", 
+      error 
+    });
     logSequelizeError(error);
-    console.error(error);
+  } finally {
+    signalReady(CONTROL_DATA_IMPORT_SIGNAL);
   }
 });

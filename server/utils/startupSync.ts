@@ -5,7 +5,10 @@ interface Signal {
   promise: Promise<void>;
   resolve: Resolve;
   reject: Reject;
+  isResolved: boolean;
 }
+
+export const CONTROL_DATA_IMPORT_SIGNAL = 'control:data:import'
 
 const signals = new Map<string, Signal>();
 
@@ -19,7 +22,20 @@ export function getSignal(name: string): Signal {
       rejectFn = reject;
     });
 
-    signals.set(name, { promise, resolve: resolveFn, reject: rejectFn });
+    const signal: Signal = {
+      promise,
+      resolve: () => {
+        signal.isResolved = true;
+        resolveFn();
+      },
+      reject: (e?: unknown) => {
+        signal.isResolved = true;
+        rejectFn(e);
+      },
+      isResolved: false
+    };
+
+    signals.set(name, signal);
   }
   return signals.get(name)!;
 }
@@ -29,5 +45,6 @@ export function waitForSignal(name: string): Promise<void> {
 }
 
 export function signalReady(name: string): void {
-  getSignal(name).resolve();
+  const signal = getSignal(name);
+  signal.resolve();
 }
