@@ -24,7 +24,8 @@ providers stays on the respective Identity rows and is not merged.
 
 - A merge must not silently strip boundary access the person only reached
   through one of the accounts.
-- The result must respect the "an Admin is never a Member" invariant.
+- The merge itself must respect the "an Admin is never a Member" invariant,
+  which is why the target is a non-Admin when it commits.
 - Conflict resolution should be predictable and not depend on an undefined role
   ordering.
 - An Admin needs visibility and an override before committing.
