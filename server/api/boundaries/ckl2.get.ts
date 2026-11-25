@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   }
   const checkResult = await userCheck(event, undefined, query.BoundaryId?.toString(), undefined);
 
-  const ignoreOverrides = query.IgnoreOverrides === "true";
+  const ignoreOverrides = query.IgnoreOverrides !== "false";
 
   let singleStigPerCkl = false;
 
@@ -81,7 +81,8 @@ export default defineEventHandler(async (event) => {
   }
 
   for (const system of boundary.Systems ?? []) {
-    const folderName = groupValue === "host" ? system.hostName || system.name : system.name;
+    const folderName =
+      groupValue === "host" ? `${system.hostName || system.name}-${system.id}` : system.name;
 
     const systemPath = path.join(dirPath, folderName);
 

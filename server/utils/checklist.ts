@@ -17,9 +17,9 @@ import {
   System,
   SystemInterface,
 } from "../../db/models";
+import { ChecklistV3, convertToV2Status } from "../utils/checklist_v3";
 import { findOrCreateAssessment } from "./assessments";
 import { findStigByStigId } from "./stigLibrary";
-import { ChecklistV3, convertToV2Status } from "../utils/checklist_v3";
 
 export async function importChecklistV3(
   cklbData: ChecklistV3,
