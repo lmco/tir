@@ -31,11 +31,9 @@ export default defineEventHandler(async (event) => {
         `${folderName}/${ckl.title}.cklb`,
       );
     }
-        // Set the response headers
     event.node.res.setHeader('Content-Type', 'application/zip');
     event.node.res.setHeader('Content-Disposition', `attachment; filename="${query.BoundaryName}-ChecklistsV3.zip"`);
 
-    // Pipe the ZIP file to the response
     zip.outputStream.pipe(event.node.res);
     zip.end();
     return new Promise((resolve, reject) => {

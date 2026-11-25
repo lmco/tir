@@ -81,7 +81,6 @@ export default defineEventHandler(async (event) => {
         ? [body.relativePaths]
         : [];
 
-    console.log("Starting Upload");
 
     const uploadedFiles = body.files;
     const supportedExtensions = new Set([".xml", ".cklb", ".ckl", ".nessus", ".zip"]);

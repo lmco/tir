@@ -8,19 +8,13 @@ export default defineEventHandler(async (event) => {
   const checkResult = await userCheck(event, undefined, query.boundaryId?.toString(), undefined);
   if (checkResult.BoundaryRoleId) {
     let returnValue: BoundaryLookup = {};
-    if (query.boundaryId === undefined) {
+    if (query.boundaryId === null || query.boundaryId === undefined) {
       throw createError({
         statusCode: 400,
         statusMessage: `No boundary specified for export`,
       });
     } else {
       const zip = new ZipFile();
-      if (query.boundaryId === null || query.boundaryId === undefined) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: `No boundary ID specified`,
-        });
-      }
       const boundary = await PullBoundaryData(query.boundaryId.toString());
       if (boundary) {
         const pretty = JSON.stringify(boundary, null, 2);
@@ -29,7 +23,13 @@ export default defineEventHandler(async (event) => {
           boundary.Boundary?.dataValues.name + ".json",
         );
         event.node.res.setHeader('Content-Type', 'application/zip');
-        event.node.res.setHeader('Content-Disposition', `attachment; filename="${query.BoundaryName}-Export.zip"`);
+        const boundaryName = boundary.Boundary?.dataValues.name || "Boundary";
+        const filename = `${boundaryName}-Export.zip`;
+
+        event.node.res.setHeader(
+          "Content-Disposition",
+          `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        );
         zip.outputStream.pipe(event.node.res);
         zip.end();
         return new Promise((resolve, reject) => {
