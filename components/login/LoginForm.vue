@@ -4,11 +4,11 @@
       <label for="username" class="block text-sm font-medium leading-6 text-gray-800 dark:text-white"> Username </label>
       <div class="mt-2">
         <input
-          id="text"
+          id="username"
           v-model="userInput.username"
-          name="text"
+          name="username"
           type="text"
-          autocomplete="text"
+          autocomplete="username"
           required
           class="block w-full rounded-md border-0 bg-white py-1.5 text-black shadow-sm ring-1 ring-inset ring-black/20 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:bg-white/5 dark:text-white dark:ring-white/10 sm:text-sm sm:leading-6"
         />
