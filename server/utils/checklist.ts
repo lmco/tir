@@ -17,9 +17,9 @@ import {
   System,
   SystemInterface,
 } from "../../db/models";
+import { ChecklistV3, convertToV2Status } from "../utils/checklist_v3";
 import { findOrCreateAssessment } from "./assessments";
 import { findStigByStigId } from "./stigLibrary";
-import { ChecklistV3, convertToV2Status } from "../utils/checklist_v3";
 
 export async function importChecklistV3(
   cklbData: ChecklistV3,
@@ -391,6 +391,7 @@ type ChecklistData = {
 export async function buildCklString<T extends boolean>(
   systemId: number,
   singleStigPerCkl: T,
+  ignoreOverrides: boolean,
 ): Promise<T extends true ? string[] : string> {
   const system = await System.findOne({
     where: { id: systemId },
@@ -540,9 +541,14 @@ export async function buildCklString<T extends boolean>(
           }
         }
 
+        const thisVulnStatus =
+          !ignoreOverrides && assessmentItem.statusOverride
+            ? assessmentItem.statusOverride
+            : assessmentItem.status;
+
         cklVulns.push({
           stig_data: cklStigData,
-          status: assessmentItem.status,
+          status: thisVulnStatus,
           findingDetails: assessmentItem.finding_details,
           comments: assessmentItem.comments,
           severityOverride: assessmentItem.severityOverride,

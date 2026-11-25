@@ -3,8 +3,8 @@ import * as path from "path";
 import { IncomingMessage } from "http";
 import { parseXml, XMLDocument } from "libxmljs";
 import formidable from "formidable";
-import AdmZip from "adm-zip";
 import { DateTime } from "luxon";
+import { open } from "yauzl";
 import { importChecklist, importChecklistV3 } from "../../utils/checklist";
 import { importXccdf } from "../../utils/xccdf";
 import { System, Boundary, Boundary_User } from "../../../db/models";
@@ -33,73 +33,67 @@ export default defineEventHandler(async (event) => {
       console.log("Starting Upload");
 
       const uploadedFiles = body.files;
-      const dirList: string[] = [];
 
       for (let i = 0; i < uploadedFiles.length; i++) {
-        let fileList: string[];
+        const tempDir = fs.mkdtempSync(path.join(config.temp_folder, "results-"));
 
-        const newFileName = path.join(config.temp_folder, uploadedFiles[i].originalFilename);
-        const newDir = path.dirname(newFileName);
-        if (!fs.existsSync(newDir)) {
-          fs.mkdirSync(newDir, { recursive: true });
-        }
+        try {
+          let fileList: string[];
 
-        fs.renameSync(uploadedFiles[i].filepath, newFileName);
+          const newFileName = path.join(tempDir, path.basename(uploadedFiles[i].originalFilename));
 
-        if (path.extname(newFileName) === ".zip") {
-          fileList = await processZip(newFileName, config.temp_folder);
-        } else {
-          fileList = [newFileName];
-        }
+          fs.renameSync(uploadedFiles[i].filepath, newFileName);
 
-        for (let j = 0; j < fileList.length; j++) {
-          const baseFilename = path.basename(fileList[j]);
-          let systemId;
-
-          if (body.SystemId) {
-            systemId = body.SystemId[j] || body.SystemId[0];
-          } else if (body.SystemName) {
-            systemId = await createOrFindSystem(
-              body.SystemName[i] || body.SystemName[0],
-              body.BoundaryId,
-            );
-          } else if (path.extname(baseFilename) !== ".nessus") {
-            const systemName = path.basename(path.dirname(fileList[j]));
-            systemId = await createOrFindSystem(systemName, body.BoundaryId);
+          if (path.extname(newFileName).toLowerCase() === ".zip") {
+            fileList = await processZip(newFileName, tempDir);
+          } else {
+            fileList = [newFileName];
           }
 
-          const fileData = fs.readFileSync(fileList[j], "utf-8");
+          for (let j = 0; j < fileList.length; j++) {
+            const baseFilename = path.basename(fileList[j]);
+            let systemId;
 
-          if (path.extname(baseFilename) === ".xml") {
-            if (verifyXccdf(fileData)) {
-              await importXccdf(fileData, systemId);
+            if (body.SystemId) {
+              systemId = body.SystemId[j] || body.SystemId[0];
+            } else if (body.SystemName) {
+              systemId = await createOrFindSystem(
+                body.SystemName[i] || body.SystemName[0],
+                body.BoundaryId,
+              );
+            } else if (path.extname(baseFilename) !== ".nessus") {
+              const parentDir = path.dirname(fileList[j]);
+              const systemName =
+                parentDir === tempDir
+                  ? path.parse(baseFilename).name
+                  : path.basename(parentDir);
+
+              systemId = await createOrFindSystem(systemName, body.BoundaryId);
+            }
+
+            const fileData = fs.readFileSync(fileList[j], "utf-8");
+
+            if (path.extname(baseFilename) === ".xml") {
+              if (verifyXccdf(fileData)) {
+                await importXccdf(fileData, systemId);
+              }
+            }
+
+            if (path.extname(baseFilename) === ".nessus") {
+              await importNessus(fileData, JSON.parse(body.systemsMatchArray[i]));
+            }
+
+            if (path.extname(baseFilename) === ".ckl") {
+              await importChecklist(fileData, systemId);
+            }
+
+            if (path.extname(baseFilename) === ".cklb") {
+              const checklistData: ChecklistV3 = JSON.parse(fileData);
+              await importChecklistV3(checklistData, systemId);
             }
           }
-
-          if (path.extname(baseFilename) === ".nessus") {
-            await importNessus(fileData, JSON.parse(body.systemsMatchArray[i]));
-          }
-
-          if (path.extname(baseFilename) === ".ckl") {
-            await importChecklist(fileData, systemId);
-          }
-
-          if (path.extname(baseFilename) === ".cklb") {
-            const checklistData: ChecklistV3 = JSON.parse(fileData);
-            await importChecklistV3(checklistData, systemId);
-          }
-
-          if (dirList.findIndex((o) => o === path.dirname(fileList[j])) === -1) {
-            dirList.push(path.dirname(fileList[j]));
-          }
-
-          fs.rmSync(fileList[j]);
-        }
-      }
-
-      for (let i = 0; i < dirList.length; i++) {
-        if (path.dirname(dirList[i]) !== path.dirname(config.temp_folder)) {
-          fs.rmSync(dirList[i], { recursive: true });
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
         }
       }
 
@@ -145,40 +139,84 @@ const verifyXccdf = (xmlData: string): boolean => {
   }
   return false;
 };
-
 const processZip = async (zipFile: string, outputPath: string): Promise<string[]> => {
   if (!fs.existsSync(outputPath)) {
     fs.mkdirSync(outputPath, { recursive: true });
   }
 
-  const filelist = await extractLibrary(zipFile, outputPath);
-
-  return filelist;
+  try {
+    const fileList = await extractZip(zipFile, outputPath);
+    console.log("Extracted files:", fileList);
+    return fileList;
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
 };
 
-const extractLibrary = async (sourceZip: string, outputDirectory: string): Promise<string[]> => {
-  const temporaryExtraction = path.join(outputDirectory, "tempExtraction");
-  const mainZip = new AdmZip(sourceZip);
-  const fileList: string[] = [];
-  await mainZip.extractAllTo(temporaryExtraction, true);
+const extractZip = (sourceZip: string, outputDirectory: string): Promise<string[]> => {
+  return new Promise((resolve, reject) => {
+    const fileList: string[] = [];
 
-  fs.readdirSync(temporaryExtraction, {
-    encoding: "utf8",
-    recursive: true,
-  }).forEach((nestedFile) => {
-    const filePath = path.join(temporaryExtraction, nestedFile);
-    if (
-      path.extname(nestedFile) === ".ckl" ||
-      path.extname(nestedFile) === ".cklb" ||
-      path.extname(nestedFile) === ".xml" ||
-      path.extname(nestedFile) === ".nessus"
-    ) {
-      fileList.push(filePath);
-    }
+    open(sourceZip, { lazyEntries: true }, (err, zipfile) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      
+
+      zipfile.on("entry", (entry) => {
+        if (
+          path.extname(entry.fileName) === ".ckl" ||
+          path.extname(entry.fileName) === ".cklb" ||
+          path.extname(entry.fileName) === ".xml" ||
+          path.extname(entry.fileName) === ".nessus"
+        ) {
+          const entryPath = path.resolve(outputDirectory, entry.fileName);
+
+          if (
+            !entryPath.startsWith(path.resolve(outputDirectory) + path.sep)
+          ) {
+            reject(new Error("Invalid ZIP entry path"));
+            zipfile.close();
+            return;
+          }
+
+          fs.mkdirSync(path.dirname(entryPath), { recursive: true });
+          zipfile.openReadStream(entry, (err, readStream) => {
+            if (err) {
+              reject(err);
+            } else {
+              const writeStream = fs.createWriteStream(entryPath);
+              readStream.on("error", reject);
+              writeStream.on("error", reject);
+
+              writeStream.on("finish", () => {
+                fileList.push(entryPath);
+                zipfile.readEntry();
+              });
+
+              readStream.pipe(writeStream);
+            }
+          });
+        } else {
+          zipfile.readEntry();
+        }
+      });
+
+      zipfile.on("end", () => {
+        fs.unlinkSync(sourceZip);
+        resolve(fileList);
+      });
+
+      zipfile.on("error", (err) => {
+        reject(err);
+      });
+
+      zipfile.readEntry(); // Read first entry
+    });
   });
-
-  fs.rmSync(sourceZip);
-  return fileList;
 };
 
 const createOrFindSystem = async (SystemName: string, BoundaryId: number): Promise<number> => {

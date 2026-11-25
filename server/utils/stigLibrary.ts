@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
-import AdmZip from "adm-zip";
+import { pipeline } from "node:stream/promises";
+import { open, type ZipFile, type Entry } from "yauzl";
 import { DateTime } from "luxon";
 import { Op, UniqueConstraintError } from "sequelize";
 import {
@@ -340,7 +341,10 @@ export const processLibrary = async (
   }
 
   const hash = await hashFile(sourceZip);
-  const { xmlFiles, importedPackages, skippedPackages } = extractLibrary(sourceZip, outputDirPath);
+  const { xmlFiles, importedPackages, skippedPackages } = await extractLibrary(
+    sourceZip,
+    outputDirPath,
+  );
 
   if (importedPackages.length === 0) {
     throw new Error("No marked STIG packages ({U,CUI,FOUO}_) found; nothing imported.");
@@ -405,36 +409,127 @@ type ExtractedLibrary = {
   skippedPackages: string[];
 };
 
-const extractLibrary = (sourceZip: string, outputDirectory: string): ExtractedLibrary => {
-  const temporaryExtraction = path.join(outputDirectory, "tempExtraction");
-  const mainZip = new AdmZip(sourceZip);
-  const xmlFiles: string[] = [];
-  const importedPackages: { name: string; classification: Classification }[] = [];
-  const skippedPackages: string[] = [];
-  fs.mkdirSync(temporaryExtraction);
-  mainZip.extractAllTo(temporaryExtraction, true);
 
-  fs.readdirSync(temporaryExtraction).forEach((nestedFile) => {
-    if (path.extname(nestedFile) !== ".zip") return;
-
-    const classification = classificationFromPackageName(nestedFile);
-    if (!classification) {
-      skippedPackages.push(nestedFile);
-      return;
-    }
-
-    const nestedZip = new AdmZip(path.join(temporaryExtraction, nestedFile));
-    nestedZip.getEntries().forEach((entry) => {
-      if (path.extname(entry.name) !== ".xml") return;
-      nestedZip.extractEntryTo(entry, outputDirectory, false, true);
-      xmlFiles.push(path.join(outputDirectory, path.basename(entry.entryName)));
+const openZip = (zipPath: string): Promise<ZipFile> =>
+  new Promise((resolve, reject) => {
+    open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) {
+        reject(err ?? new Error("Unable to open ZIP"));
+        return;
+      }
+      resolve(zipfile);
     });
-    importedPackages.push({ name: nestedFile, classification });
   });
 
-  fs.rmSync(temporaryExtraction, { recursive: true });
+const safeJoin = (baseDir: string, entryName: string): string => {
+  const base = path.resolve(baseDir);
+  const target = path.resolve(base, entryName);
+  if (target !== base && !target.startsWith(base + path.sep)) {
+    throw new Error(`Unsafe ZIP entry path: ${entryName}`);
+  }
+  return target;
+};
 
-  return { xmlFiles, importedPackages, skippedPackages };
+const extractEntryToFile = (
+  zipfile: ZipFile,
+  entry: Entry,
+  destination: string,
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    zipfile.openReadStream(entry, (err, stream) => {
+      if (err || !stream) {
+        reject(err ?? new Error("Unable to read ZIP entry"));
+        return;
+      }
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      pipeline(stream, fs.createWriteStream(destination))
+        .then(resolve)
+        .catch(reject);
+    });
+  });
+
+const forEachZipEntry = (
+  zipfile: ZipFile,
+  handler: (entry: Entry) => Promise<void>,
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    zipfile.on("entry", (entry) => {
+      (async () => {
+        try {
+          await handler(entry);
+          zipfile.readEntry();
+        } catch (error) {
+          reject(error);
+        }
+      })();
+    });
+    zipfile.once("end", resolve);
+    zipfile.once("error", reject);
+    zipfile.readEntry();
+  });
+
+const extractLibrary = async (
+  sourceZip: string,
+  outputDirectory: string,
+): Promise<ExtractedLibrary> => {
+  const temporaryExtraction = path.join(outputDirectory, "tempExtraction");
+  const xmlFiles: string[] = [];
+  const importedPackages: ExtractedLibrary["importedPackages"] = [];
+  const skippedPackages: string[] = [];
+
+  fs.mkdirSync(temporaryExtraction, { recursive: true });
+
+  try {
+    const mainZip = await openZip(sourceZip);
+    try {
+      let packageIndex = 0;
+
+      await forEachZipEntry(mainZip, async (entry) => {
+        if (entry.fileName.endsWith("/")) return;
+        if (path.extname(entry.fileName).toLowerCase() !== ".zip") return;
+
+        const name = path.basename(entry.fileName);
+        const classification = classificationFromPackageName(name);
+
+        if (!classification) {
+          skippedPackages.push(name);
+          return;
+        }
+
+        const packageDir = safeJoin(
+          temporaryExtraction,
+          `package-${packageIndex++}`,
+        );
+        const nestedZipPath = safeJoin(packageDir, name);
+        await extractEntryToFile(mainZip, entry, nestedZipPath);
+
+        const nestedZip = await openZip(nestedZipPath);
+        try {
+          await forEachZipEntry(nestedZip, async (nestedEntry) => {
+            if (nestedEntry.fileName.endsWith("/")) return;
+            if (path.extname(nestedEntry.fileName).toLowerCase() !== ".xml") return;
+
+            const destination = safeJoin(
+              outputDirectory,
+              path.basename(nestedEntry.fileName),
+            );
+            await extractEntryToFile(nestedZip, nestedEntry, destination);
+            xmlFiles.push(destination);
+          });
+        } finally {
+          nestedZip.close();
+        }
+
+        importedPackages.push({ name, classification });
+      });
+    } finally {
+      mainZip.close();
+    }
+
+    return { xmlFiles, importedPackages, skippedPackages };
+  } finally {
+    fs.rmSync(temporaryExtraction, { recursive: true, force: true });
+  }
 };
 
 export const findStigByStigId = async (
@@ -446,13 +541,10 @@ export const findStigByStigId = async (
       alias: stigid,
     },
   });
-
   const aliasTocheck: string[] = [stigid];
-
   for (const stigAlias of stigAliases) {
     aliasTocheck.push(stigAlias.identifier);
   }
-
   for (const alias of aliasTocheck) {
     const stigMatch = await Stig.findOne({
       where: {
@@ -472,6 +564,5 @@ export const findStigByStigId = async (
       return stigMatch;
     }
   }
-
   return null;
 };
