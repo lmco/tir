@@ -8,6 +8,9 @@ import {
   LOCKOUT_REFUSAL,
 } from "~/server/auth/signInMethod";
 import { availableMethods, loadAuthConfig } from "~/server/utils/config/authConfig";
+import { SessionService } from "~/server/auth/sessionService";
+
+const sessionService = new SessionService();
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
@@ -122,6 +125,9 @@ export default defineEventHandler(async (event) => {
   await user.save();
 
   if (body.signInMethod !== undefined) {
+    // A session opened through the old method must not outlive it. An Admin changing their
+    // own method keeps the session that proves who they are.
+    if (user.id !== checkResult.user.id) await sessionService.deleteSessionsForUser(user.id);
     logger.notice({
       service: "auth",
       message: `Sign-in method of ${user.email} changed from ${methodBeforeEdit} to ${body.signInMethod} by ${checkResult.user.email}`,

@@ -67,7 +67,9 @@ they already are through the password reset and the provider configuration.
 This covers an admin created locally who moves to SSO, and an Admin who has
 lost their only credential. Each change is written to the log with the
 account, the old and new method and the Admin who made it. The log entry is
-what makes a takeover visible.
+what makes a takeover visible. A change made to someone else's account ends
+that account's sessions, so a session opened through the old method does not
+outlive it. An Admin changing their own method stays signed in.
 
 A change is refused when it would leave no Admin able to sign in. That covers
 a method change, a role change, deleting an account, and saving a provider
