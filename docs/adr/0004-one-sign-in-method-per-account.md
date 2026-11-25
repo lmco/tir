@@ -88,10 +88,11 @@ local password login still works, so a switch to a method that turns out not
 to work cannot lock the account. Once no password is stored, local login is
 refused for an account whose method is not local. The reset refuses to set a
 password for an account whose method is not local at any time, so a fallback
-password cannot be changed and does not come back once it is cleared. Moving to
-`local` leaves the password unset until one is set with the existing reset.
-Providers of the same family (two LDAP directories, two OIDC realms) share one
-method and are not told apart. That distinction waits for ADR 0001.
+password cannot be changed and does not come back once it is cleared. Moving
+to `local` keeps any stored password and does not create one. An account
+without one has it set with the existing reset. Providers of the same family
+(two LDAP directories, two OIDC realms) share one method and are not told
+apart. That distinction waits for ADR 0001.
 
 ### Consequences
 
