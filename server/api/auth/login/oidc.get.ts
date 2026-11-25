@@ -1,6 +1,7 @@
-import { defineEventHandler, getQuery, setCookie, sendRedirect } from "h3";
+import { defineEventHandler, getQuery, setCookie, sendRedirect, setResponseHeader } from "h3";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
 import { AUTH_COOKIES, clearLoginCookies } from "~/server/utils/authCookies";
+import { testResultPage } from "~/server/utils/testResultPage";
 
 export default defineEventHandler(async (event) => {
   try {
@@ -32,6 +33,12 @@ export default defineEventHandler(async (event) => {
 
     return { success: true, message: "Redirecting to OIDC provider..." };
   } catch (error: any) {
+    // Only enabled providers are loaded, so a test of a disabled or unsaved one fails here.
+    // The popup has to report that, or the admin page waits for a result that never comes.
+    if (getQuery(event).test === "true") {
+      setResponseHeader(event, "Content-Type", "text/html");
+      return testResultPage({ error: error.message });
+    }
     return { success: false, message: error.message };
   }
 });

@@ -1,19 +1,7 @@
 import { defineEventHandler, getCookie, H3Error, sendRedirect, setResponseHeader } from "h3";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
 import { AUTH_COOKIES, clearAuthCookie } from "~/server/utils/authCookies";
-import type { TestLoginResult } from "~/server/auth/authProvider";
-
-function testResultPage(result: TestLoginResult | { error: string }): string {
-  const b64 = Buffer.from(JSON.stringify({ type: "tir_test_login", ...result })).toString("base64");
-  return `<!DOCTYPE html><html><head><title>TIR Login Test</title></head><body>
-<script>
-  try {
-    const r = JSON.parse(atob("${b64}"));
-    if (window.opener) window.opener.postMessage(r, window.location.origin);
-  } finally { window.close(); }
-</script>
-</body></html>`;
-}
+import { testResultPage } from "~/server/utils/testResultPage";
 
 export default defineEventHandler(async (event) => {
   const isTestMode = getCookie(event, AUTH_COOKIES.TEST_MODE) === "1";

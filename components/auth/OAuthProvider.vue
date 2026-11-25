@@ -264,7 +264,7 @@
           type="button"
           :disabled="loginTest?.loading"
           class="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-          title="Requires saved config — opens a popup to run the full OAuth login flow without affecting your current session"
+          title="Requires a saved and enabled provider. Opens a popup to run the full OAuth login flow without affecting your current session"
           @click="testLogin"
         >
           {{ loginTest?.loading ? "Waiting…" : "Test Login" }}
@@ -314,7 +314,10 @@ function callbackUrl(): string {
 function onMessage(event: MessageEvent) {
   if (event.origin !== globalThis.location.origin) return;
   const data = event.data;
-  if (!data || data.type !== "tir_test_login" || data.providerId !== provider.value.id) return;
+  if (!data || data.type !== "tir_test_login") return;
+  // An error can arrive before the server knows which provider it was for.
+  const forThisProvider = data.providerId ? data.providerId === provider.value.id : loginTest.value?.loading;
+  if (!forThisProvider) return;
   if (data.error) {
     loginTest.value = { loading: false, error: data.error };
   } else {
