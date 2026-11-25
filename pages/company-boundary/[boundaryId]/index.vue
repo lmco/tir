@@ -1247,7 +1247,7 @@
                 </DialogTitle>
                 <div class="mt-2">
                   <p class="text-sm text-gray-600 dark:text-gray-200">
-                    Any changes you made will be lost.
+                    Leaving will cancel the import, including any automatically matched files. No results will be imported.
                   </p>
                 </div>
 
