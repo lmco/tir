@@ -251,11 +251,12 @@ function addLDAP() {
     bindDn: "",
     passwordSet: false,
     baseDn: "",
-    ssl: false,
+    ssl: true,
     sslInsecure: false,
     sslCa: "",
     groupAttribute: "memberOf",
     groupMappings: "",
+    fallbackEmailDomain: "",
   });
 }
 

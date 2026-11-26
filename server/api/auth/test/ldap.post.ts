@@ -1,5 +1,6 @@
 import { Client } from "ldapts";
 import { storedLDAPPassword } from "~/server/utils/config/authConfig";
+import { ldapClientOptions, startTlsIfNeeded } from "~/server/auth/ldapUtils";
 
 const CONNECT_TIMEOUT_MS = 8_000;
 
@@ -23,20 +24,18 @@ export default defineEventHandler(async (event) => {
 
   const checks: CheckResult[] = [];
 
-  const clientOptions: any = { url, connectTimeout: CONNECT_TIMEOUT_MS };
-  if (ssl) {
-    if (sslInsecure) {
-      clientOptions.tlsOptions = { rejectUnauthorized: false };
-    } else if (sslCa) {
-      clientOptions.tlsOptions = { ca: sslCa };
-    } else {
-      clientOptions.tlsOptions = {};
-    }
-  }
-
-  const client = new Client(clientOptions);
+  const tlsConfig = { url, ssl, sslInsecure, sslCa };
+  const client = new Client(ldapClientOptions(tlsConfig, CONNECT_TIMEOUT_MS));
 
   try {
+    // A refused StartTLS must end the test here, or the binds below would go out in clear text.
+    try {
+      await startTlsIfNeeded(client, tlsConfig);
+    } catch (err: any) {
+      checks.push({ name: "Connect", ok: false, message: `StartTLS failed: ${err.message ?? "refused"}` });
+      return { ok: false, checks };
+    }
+
     try {
       await client.bind("", "");
       checks.push({ name: "Connect", ok: true, message: "Connected (anonymous bind allowed)" });

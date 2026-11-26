@@ -5,9 +5,11 @@ import {
   escapeFilter,
   firstAttr,
   allAttrs,
-  domainFromBaseDn,
+  fallbackEmail,
+  ldapClientOptions,
+  startTlsIfNeeded,
 } from "~/server/auth/ldapUtils";
-import { storedLDAPPassword } from "~/server/utils/config/authConfig";
+import { loadAuthConfig, storedLDAPPassword } from "~/server/utils/config/authConfig";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 
@@ -62,21 +64,20 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const clientOptions: any = { url, connectTimeout: CONNECT_TIMEOUT_MS };
-  if (ssl) {
-    if (sslInsecure) {
-      clientOptions.tlsOptions = { rejectUnauthorized: false };
-    } else if (sslCa) {
-      clientOptions.tlsOptions = { ca: sslCa };
-    } else {
-      clientOptions.tlsOptions = {};
-    }
-  }
-
+  const tlsConfig = { url, ssl, sslInsecure, sslCa };
   const attr = groupAttribute || "memberOf";
-  const client = new Client(clientOptions);
+  const client = new Client(ldapClientOptions(tlsConfig, CONNECT_TIMEOUT_MS));
+
+  // The saved provider decides the address a real login would make up for an entry with no mail.
+  const saved = (await loadAuthConfig()).ldap.find((p) => p.id === body.id);
+  const fallbackConfig = {
+    id: typeof body.id === "string" && body.id ? body.id : "unsaved",
+    uid: saved?.uid,
+    fallbackEmailDomain: saved?.fallbackEmailDomain,
+  };
 
   try {
+    await startTlsIfNeeded(client, tlsConfig);
     await client.bind(bindDn, bindPassword);
 
     let ldapUser: Entry;
@@ -146,15 +147,13 @@ export default defineEventHandler(async (event) => {
       lastName = firstAttr(ldapUser.sn) || displayName.split(" ").slice(1).join(" ") || "Unknown";
       email = firstAttr(ldapUser.mail) || firstAttr(ldapUser.userPrincipalName);
       if (!email?.includes("@")) {
-        const domain = domainFromBaseDn(baseDn);
-        const sam = firstAttr(ldapUser.sAMAccountName) || username;
-        email = domain ? `${sam}@${domain}` : `${sam}@example.com`;
+        email = fallbackEmail(firstAttr(ldapUser.sAMAccountName) || username, fallbackConfig);
       }
     } else {
       firstName = firstAttr(ldapUser.givenName, username);
       lastName = firstAttr(ldapUser.sn, "Unknown");
       const mails = allAttrs(ldapUser.mail).filter(Boolean);
-      email = mails.length ? mails[0] : `${username}@${domainFromBaseDn(baseDn) || "example.com"}`;
+      email = mails.length ? mails[0] : fallbackEmail(username, fallbackConfig);
     }
 
     return { ok: true, email, firstName, lastName, groups, userRoleId, denied };

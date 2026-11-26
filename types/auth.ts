@@ -55,6 +55,8 @@ export interface LDAPProviderConfig {
   sslCa: string;
   groupAttribute: string;
   groupMappings: string;
+  /** Set only on the provider an upgrade carried over, so its accounts with a made-up address keep it. */
+  fallbackEmailDomain: string;
 }
 
 export const LDAP_PROVIDER_SCHEMA = {
@@ -70,6 +72,7 @@ export const LDAP_PROVIDER_SCHEMA = {
   sslCa: { type: "str", default: "" },
   groupAttribute: { type: "str", default: "memberOf" },
   groupMappings: { type: "str", default: "" },
+  fallbackEmailDomain: { type: "str", default: "", oneOf: ["", "example.com"] },
 } as const;
 
 export type OIDCGroupClaimType = "scope" | "claim";

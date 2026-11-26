@@ -5,27 +5,15 @@ import { GroupClaimExtractor } from "./groupClaimExtractor";
 import {
   UAC_ACCOUNT_DISABLED,
   escapeFilter,
-  domainFromBaseDn,
+  fallbackEmail,
+  ldapClientOptions,
+  startTlsIfNeeded,
   firstAttr,
   allAttrs,
 } from "./ldapUtils";
 import type { LDAPProviderConfig } from "~/types/auth";
 
 const CONNECT_TIMEOUT_MS = 10_000;
-
-function buildClientOptions(config: LDAPProviderConfig): any {
-  const opts: any = { url: config.url, connectTimeout: CONNECT_TIMEOUT_MS };
-  if (config.ssl) {
-    if (config.sslInsecure) {
-      opts.tlsOptions = { rejectUnauthorized: false };
-    } else if (config.sslCa) {
-      opts.tlsOptions = { ca: config.sslCa };
-    } else {
-      opts.tlsOptions = {};
-    }
-  }
-  return opts;
-}
 
 export class LDAPAuthProvider extends AuthProvider {
   private readonly config: LDAPProviderConfig & { password?: string };
@@ -67,9 +55,10 @@ export class LDAPAuthProvider extends AuthProvider {
     }
 
     const groupAttr = this.config.groupAttribute || "memberOf";
-    const client = new Client(buildClientOptions(this.config));
+    const client = new Client(ldapClientOptions(this.config, CONNECT_TIMEOUT_MS));
 
     try {
+      await startTlsIfNeeded(client, this.config);
       await client.bind(bindDn, ldapPassword);
 
       const { searchEntries } = await client.search(baseDn, {
@@ -91,7 +80,7 @@ export class LDAPAuthProvider extends AuthProvider {
       const firstName = firstAttr(ldapUser.givenName, username);
       const lastName = firstAttr(ldapUser.sn, "Unknown");
       const mails = allAttrs(ldapUser.mail).filter(Boolean);
-      const email = mails.length ? mails : [`${username}@${domainFromBaseDn(baseDn) || "example.com"}`];
+      const email = mails.length ? mails : [fallbackEmail(username, this.config)];
 
       const groups = allAttrs(ldapUser[groupAttr]).map((g) => g.toLowerCase());
       const userRoleId = this.resolveGroupRole(groups);
@@ -131,9 +120,10 @@ export class LDAPAuthProvider extends AuthProvider {
     }
 
     const groupAttr = this.config.groupAttribute || "memberOf";
-    const client = new Client(buildClientOptions(this.config));
+    const client = new Client(ldapClientOptions(this.config, CONNECT_TIMEOUT_MS));
 
     try {
+      await startTlsIfNeeded(client, this.config);
       await client.bind(bindDn, ldapPassword);
 
       const escaped = escapeFilter(username);
@@ -191,7 +181,7 @@ export class LDAPAuthProvider extends AuthProvider {
         throw new H3Error("Unauthorized: You do not belong to any permitted groups.");
       }
 
-      const profile = this.extractADProfile(adUser, username, baseDn);
+      const profile = this.extractADProfile(adUser, username);
       return this.finalizeLogin(event, profile, "ldap", userRoleId);
     } catch (error: any) {
       if (error instanceof H3Error) throw error;
@@ -205,7 +195,6 @@ export class LDAPAuthProvider extends AuthProvider {
   private extractADProfile(
     adUser: Entry,
     username: string,
-    baseDn: string,
   ): { email: string; firstName: string; lastName: string } {
     const displayName = firstAttr(adUser.displayName);
     const firstName = firstAttr(adUser.givenName) || displayName.split(" ")[0] || username;
@@ -213,9 +202,7 @@ export class LDAPAuthProvider extends AuthProvider {
 
     let email = firstAttr(adUser.mail) || firstAttr(adUser.userPrincipalName);
     if (!email?.includes("@")) {
-      const domain = domainFromBaseDn(baseDn);
-      const sam = firstAttr(adUser.sAMAccountName) || username;
-      email = domain ? `${sam}@${domain}` : `${sam}@example.com`;
+      email = fallbackEmail(firstAttr(adUser.sAMAccountName) || username, this.config);
     }
 
     return { email, firstName, lastName };

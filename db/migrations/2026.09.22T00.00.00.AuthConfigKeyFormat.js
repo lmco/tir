@@ -91,6 +91,8 @@ export const up = async ({ context: sequelize }) => {
       await insertIfAbsent(sequelize, "auth:ldap:openldap-1:ssl",           "false",          now, migration);
       await insertIfAbsent(sequelize, "auth:ldap:openldap-1:sslInsecure",   "false",          now, migration);
       await insertIfAbsent(sequelize, "auth:ldap:openldap-1:sslCa",         "",               now, migration);
+      // Accounts this directory created without a mail attribute are username@example.com.
+      await insertIfAbsent(sequelize, "auth:ldap:openldap-1:fallbackEmailDomain", "example.com", now, migration);
     }
 
     // Before this migration an absent authLocalEnable meant local login was off whenever
