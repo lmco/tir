@@ -116,6 +116,11 @@ apart. That distinction waits for ADR 0001.
   last Admin exists at the provider that remains, so removing the one
   directory they use is allowed while another directory of that method stays
   enabled.
+- Bad, because a deployment's only Admin, when signed in through an external
+  method, cannot move to Local. The reset refuses an account that is not
+  Local, and the lockout guard refuses a Local Admin with no password. A
+  second Admin with a local password is the way round it. ADR 0001 removes
+  the case, since a local login is then attached by setting a password.
 - Neutral, because `creationMethod` now means the account's current sign-in
   method rather than how it was first created. The Phase 1 migration (ADR
   0003) reads the column to create each account's Identity and the old meaning
