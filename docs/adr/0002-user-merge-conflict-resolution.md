@@ -96,7 +96,8 @@ second account.
   without that person taking part, which moves their logins and discards their
   Admin role. The audit entry is what makes it visible.
 - Bad, because it depends on the Admin-is-not-a-Member invariant, which is
-  enforced by separate work (API enforcement and SSO claim re-sync).
+  enforced by separate work (API enforcement). What re-sync does with a Member
+  it promotes is the open question under More Information.
 - Neutral, because per-role override adds preview UI complexity.
 
 ### Confirmation
