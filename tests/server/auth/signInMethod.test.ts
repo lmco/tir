@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   accountMethod,
   anyAdminCanSignIn,
+  demotionLocksOut,
   isSignInMethod,
   methodChangeRefusal,
   signInRefusal,
@@ -92,5 +93,27 @@ describe("anyAdminCanSignIn", () => {
 
   test("is satisfied by any one admin", () => {
     expect(anyAdminCanSignIn([oidcAdmin, localAdmin], { ...all, oidc: false })).toBe(true);
+  });
+});
+
+describe("demotionLocksOut", () => {
+  const all = { local: true, ldap: true, oidc: true, oauth: true };
+  const ldapAdmin = (id: number) => ({ id, UserRoleId: 1, creationMethod: "ldap", password: null });
+
+  test("is true for the only admin who can sign in", () => {
+    expect(demotionLocksOut([ldapAdmin(1)], 1, all)).toBe(true);
+  });
+
+  test("is false while another admin can sign in", () => {
+    expect(demotionLocksOut([ldapAdmin(1), ldapAdmin(2)], 1, all)).toBe(false);
+  });
+
+  test("is true when the other admin's method has no enabled provider", () => {
+    const oidcAdmin = { id: 2, UserRoleId: 1, creationMethod: "oidc", password: null };
+    expect(demotionLocksOut([ldapAdmin(1), oidcAdmin], 1, { ...all, oidc: false })).toBe(true);
+  });
+
+  test("is false when no admin could sign in already", () => {
+    expect(demotionLocksOut([ldapAdmin(1)], 1, { ...all, ldap: false })).toBe(false);
   });
 });

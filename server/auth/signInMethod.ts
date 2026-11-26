@@ -49,4 +49,17 @@ export function anyAdminCanSignIn(users: LockoutSubject[], available: MethodAvai
   return users.some((u) => u.UserRoleId === ADMIN_ROLE_ID && canSignIn(u, available));
 }
 
+/** Whether lowering this account's role would take away the last Admin who can sign in. */
+export function demotionLocksOut(
+  users: (LockoutSubject & { id: number })[],
+  userId: number,
+  available: MethodAvailability,
+): boolean {
+  if (!anyAdminCanSignIn(users, available)) return false;
+  return !anyAdminCanSignIn(
+    users.filter((u) => u.id !== userId),
+    available,
+  );
+}
+
 export const LOCKOUT_REFUSAL = "This change would leave no administrator able to sign in.";

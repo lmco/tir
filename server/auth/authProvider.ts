@@ -2,7 +2,8 @@ import { H3Error } from "h3";
 import { DateTime } from "luxon";
 import { User } from "../../db/models";
 import { SessionService } from "./sessionService";
-import { signInRefusal } from "./signInMethod";
+import { demotionLocksOut, signInRefusal } from "./signInMethod";
+import { availableMethods, loadAuthConfig } from "~/server/utils/config/authConfig";
 import type { AuthEvent, SignInMethod } from "~/types/auth";
 
 export interface TestLoginResult {
@@ -24,6 +25,13 @@ export function assertEmailVerified(claims: Record<string, any>, required: boole
   if (verified === undefined || verified === null) return;
   if (verified === true || verified === "true") return;
   throw new Error("The identity provider has not verified this email address.");
+}
+
+const ADMIN_ROLE_ID = 1;
+
+async function demotionLeavesNoAdmin(userId: number): Promise<boolean> {
+  const users = await User.findAll({ attributes: ["id", "UserRoleId", "creationMethod", "password"] });
+  return demotionLocksOut(users, userId, availableMethods(await loadAuthConfig()));
 }
 
 export abstract class AuthProvider {
@@ -66,8 +74,18 @@ export abstract class AuthProvider {
       logger.info({ service: "auth", message: `Created new local user for ${authMethod} login: ${email}` });
     }
 
-    const roleChanged = Boolean(userRoleId) && user.UserRoleId !== userRoleId;
+    const roleDiffers = Boolean(userRoleId) && user.UserRoleId !== userRoleId;
+    // Group mappings that give every Admin the User role would otherwise leave nobody to fix them.
+    const demotionKept =
+      roleDiffers && user.UserRoleId === ADMIN_ROLE_ID && (await demotionLeavesNoAdmin(user.id));
+    const roleChanged = roleDiffers && !demotionKept;
     if (roleChanged) user.UserRoleId = userRoleId!;
+    if (demotionKept) {
+      logger.warning({
+        service: "auth",
+        message: `Kept the Admin role for ${email}: the ${authMethod} group mappings grant RoleId ${userRoleId}, and applying that would leave no administrator able to sign in`,
+      });
+    }
 
     // The switch to this method is now proven, so the local fallback goes.
     const fallbackCleared = Boolean(user.password);
