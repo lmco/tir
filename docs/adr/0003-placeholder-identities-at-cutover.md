@@ -195,7 +195,12 @@ cannot be the account's only way in.
   group mappings, gives the wrongly bound person Admin rights until the reset.
   The reset and its audit entry cover that account's own logins, tokens and
   edits. What was done to other Users or to providers in that time is found in
-  the audit log and undone by hand.
+  the audit log and undone by hand. With Admin rights that person can also
+  defeat the reset itself, for example by creating a second Admin account and
+  removing the placeholder from it, which leaves nothing to reset. The rules
+  above close the direct routes. They do not make the reset a defence against
+  someone who holds an Admin account, and recovery then rests on the audit
+  log.
 - Bad, because a stored password that ADR 0004 kept only as a fallback after a
   switch away from Local becomes a lasting local Identity, which stays until
   its owner removes it.
