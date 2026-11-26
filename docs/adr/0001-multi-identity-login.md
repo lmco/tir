@@ -119,9 +119,9 @@ happens when an unrecognised identity signs in:
 - No match, switch on: the account is created without a prompt, as today. The
   provider's group mappings still decide who is admitted and which role they
   get, so an unmapped user on a mapped provider is rejected.
-- No match, switch off: the login is rejected with a message that an Admin must
-  create the account. The switch wins over group mappings, so a user in a
-  mapped group is rejected too.
+- No match, switch off: the login is rejected, and an Admin has to create the
+  account. The switch wins over group mappings, so a user in a mapped group is
+  rejected too.
 
 On a provider with group mappings the mapping gate applies to every login,
 before any Identity lookup. An identity in no mapped group cannot sign in,
@@ -131,8 +131,7 @@ attached is held to the same gate when it first signs in.
 A signed-in user can connect a further login, including one with a different
 email, from their profile page, and can remove one of their own Identities
 there, except the last working one and one that began as a placeholder (ADR
-0003). Turning the switch off asks the Admin to confirm that first-time users
-of that provider will be rejected.
+0003).
 
 An Admin can also attach an Identity to any User, or remove one, from the user
 editor. This covers a person who cannot prove ownership themselves, such as a
@@ -202,8 +201,7 @@ Identities disagree changes no role.
 - Good, because account-merge (ADR 0002) becomes possible and one person can log
   in through any provider and land on the same User even when the emails differ.
 - Good, because credential storage is consolidated onto Identity as a single
-  PHC-style encoded field (algorithm, iterations, salt, hash) instead of
-  separate `password` and `salt` columns.
+  PHC-style encoded field instead of separate `password` and `salt` columns.
 - Good, because a provider can change its address or TLS without touching
   anyone's login, and a provider added after a delete cannot inherit the old
   one's logins.
