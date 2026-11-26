@@ -174,7 +174,9 @@ through their provider reaches the account the Admin made.
 
 For the lockout guard in ADR 0001, an unbound placeholder counts as a working
 Identity at every provider in its pin, and a retired merge source is not a
-live account.
+live account. An unbound placeholder that a merge moved does not count, since
+it binds only after a sign-in with another of the target's credentials and so
+cannot be the account's only way in.
 
 ### Consequences
 
@@ -296,7 +298,7 @@ live account.
 - An account the migration left without an Identity, an Admin's included, can
   have one attached by an Admin.
 - For the lockout guard in ADR 0001, an unbound placeholder counts as a
-  working Identity at every provider in its pin.
+  working Identity at every provider in its pin, unless a merge moved it.
 
 ## Pros and Cons of the Options
 
