@@ -286,7 +286,7 @@ Identities disagree changes no role.
   last working one. Giving a User a second local Identity is rejected by
   every route.
 - With a provider's create switch off, a first-time login with no matching
-  User creates no account, and turning the switch off asks for confirmation.
+  User creates no account.
 - On a provider with group mappings, a login in no mapped group is rejected
   before any Identity lookup, including one that would connect to an existing
   User or that already belongs to one.
