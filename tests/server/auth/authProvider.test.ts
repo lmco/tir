@@ -1,12 +1,18 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { assertEmailVerified } from "../../../server/auth/authProvider";
+import { fetchPages } from "../../../server/auth/oauthAuthProvider";
 import { GroupClaimExtractor } from "../../../server/auth/groupClaimExtractor";
 
 vi.mock("../../../db/models", () => ({
   User: { findOne: vi.fn(), create: vi.fn() },
   Session: { create: vi.fn(), destroy: vi.fn(), findOne: vi.fn() },
   UserRole: {},
+}));
+
+vi.mock("~/server/utils/config/authConfig", () => ({
+  availableMethods: vi.fn(),
+  loadAuthConfig: vi.fn(),
 }));
 
 vi.mock("../../../server/utils/logger", () => ({
@@ -123,5 +129,25 @@ describe("GroupClaimExtractor", () => {
 
     const roles = extractor.getAllMatchingRoles(["unknown"]);
     expect(roles).toEqual([]);
+  });
+});
+
+describe("fetchPages", () => {
+  const page = (n: number) => ({ ok: true, json: () => Promise.resolve(Array.from({ length: n }, (_, i) => i)) });
+
+  test("returns every item when the last page is short", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(page(100)).mockResolvedValueOnce(page(7));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchPages("https://api.example.com/teams", {}, (p) => p)).toHaveLength(107);
+  });
+
+  test("returns null when the list is still full at the page cap", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(page(100)));
+    expect(await fetchPages("https://api.example.com/teams", {}, (p) => p)).toBeNull();
+  });
+
+  test("returns null when a page fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    expect(await fetchPages("https://api.example.com/teams", {}, (p) => p)).toBeNull();
   });
 });

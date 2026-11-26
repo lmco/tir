@@ -285,8 +285,8 @@ export class OAuthAuthProvider extends AuthProvider {
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
 
-/** Every item across page-numbered results, or null when any page fails. */
-async function fetchPages(
+/** Every item across page-numbered results, or null when a page fails or the list is longer than the cap. */
+export async function fetchPages(
   url: string,
   headers: Record<string, string>,
   items: (page: any) => any[],
@@ -298,12 +298,13 @@ async function fetchPages(
     if (!res.ok) return null;
     const batch = items(await res.json());
     all.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
+    if (batch.length < PAGE_SIZE) return all;
   }
-  return all;
+  // A partial list could be missing the group that grants a role, so it is treated as no answer.
+  return null;
 }
 
-/** Every value across Bitbucket's cursor-style pages, or null when any page fails. */
+/** Every value across Bitbucket's cursor-style pages, or null when a page fails or pages remain at the cap. */
 async function fetchBitbucketPages(url: string, headers: Record<string, string>): Promise<any[] | null> {
   const all: any[] = [];
   let next: string | undefined = `${url}?pagelen=${PAGE_SIZE}`;
@@ -314,7 +315,7 @@ async function fetchBitbucketPages(url: string, headers: Record<string, string>)
     all.push(...(data.values || []));
     next = data.next;
   }
-  return all;
+  return next ? null : all;
 }
 
 function parseGroupMappings(raw: string): GroupMapping[] {
