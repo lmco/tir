@@ -214,6 +214,10 @@ live account.
   ADRs allow produces. With a second Admin either is fixed by attaching a
   login. For a sole Admin an operator correcting the row in the database is
   the interim answer.
+- Bad, because a sole Admin with no stored password, whose method has no
+  enabled provider when the migration runs, is left with no Identity and
+  nothing inside TIR can attach one. That account could not sign in before
+  the migration either, and the migration log names it.
 - Bad, because a reset cannot give back what a wrongly bound person changed or
   removed by hand, and it also removes what the owner added since the bind.
   It lists the edits in the audit entry and leaves them to the owner and the
