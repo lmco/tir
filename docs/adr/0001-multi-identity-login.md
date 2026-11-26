@@ -161,19 +161,20 @@ verified (ADR 0003). A local Identity is attached by setting a password. An
 account an Admin creates is given at least one Identity in one of these two
 ways.
 
-One guard applies to every action in this ADR, ADR 0002 and ADR 0003. An
-action is refused when it would leave TIR with no Admin who can sign in,
-meaning no User with the Admin role who holds a working Identity. Deleting the
-provider that holds every working Identity of the last such Admin is refused,
-and so is a merge that would retire that Admin (ADR 0002). Lowering that
-Admin's role and deleting that Admin's account are refused in the same way.
-Removing that Admin's last working Identity is already refused by the rule
-above. This is a lockout guard and not a trust rule. It does not limit which
-Admin may change whose logins. The guard covers actions taken inside TIR. It
-does not cover the role a provider's claims grant at login, since the provider
-is the authority on that role. When a provider's group mappings lower the last
-Admin at their next login, TIR has no Admin until someone the provider maps to
-Admin signs in, and the fix is made at the provider.
+One guard applies to every action taken inside TIR under this ADR, ADR 0002
+and ADR 0003. An action is refused when it would leave TIR with no Admin who
+can sign in, meaning no User with the Admin role who holds a working Identity.
+Deleting the provider that holds every working Identity of the last such Admin
+is refused, and so is a merge that would retire that Admin (ADR 0002).
+Lowering that Admin's role and deleting that Admin's account are refused in
+the same way. Removing that Admin's last working Identity is already refused
+by the rule above. This is a lockout guard and not a trust rule. It does not
+limit which Admin may change whose logins. The guard covers actions taken
+inside TIR. It does not cover the role a provider's claims grant at login,
+since the provider is the authority on that role. When a provider's group
+mappings lower the last Admin at their next login, TIR has no Admin until
+someone the provider maps to Admin signs in, and the fix is made at the
+provider.
 
 Provider claims are authoritative for the Identity they come from and are
 re-synced on every login, not only when the account is created. Each login
@@ -278,8 +279,8 @@ Identities disagree changes no role.
   an Admin's account as for any other and writes an audit entry naming who
   made the change and on which account.
 - An action that would leave no User with the Admin role holding a working
-  Identity is refused: deleting a provider, removing an Identity, or a merge
-  (ADR 0002).
+  Identity is refused: deleting a provider, removing an Identity, a merge (ADR
+  0002), lowering that Admin's role, or deleting that Admin's account.
 - Removing a User's last working Identity is rejected, and an Identity at a
   deleted provider does not count as working. A signed-in user, Admin or not,
   can remove one of their own Identities from the profile page but not the
