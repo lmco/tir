@@ -78,9 +78,13 @@ depend on. An account can sign in through any provider of its method, so the
 check counts an Admin as able to sign in while any provider of their method is
 enabled, or while they hold a password and local sign-in is available. It is a
 lockout guard and not a trust rule, and it does not stop a change made while
-no Admin could sign in already. It does not cover the role a provider's group
-mappings grant at login. When those lower the last Admin, the fix is made at
-the provider, and the next person it maps to Admin becomes one at their login.
+no Admin could sign in already. The guard also holds at login. A role that a
+provider's group mappings grant is applied as the provider reports it, except
+that a login which would lower the last Admin able to sign in keeps the Admin
+role and writes a warning to the log. Mappings that give every Admin the User
+role, such as an Admin group next to a broad User group that every Admin is
+also in, would otherwise leave nobody able to correct them. An Admin who has
+left is stopped at the provider, where they can no longer sign in.
 
 Moving away from `local` keeps the stored password as a fallback until the
 first successful sign-in through the new method, which clears it. Until then
