@@ -150,13 +150,13 @@ a local password set since the bind, so that it has to be set again. A local
 Identity that existed before the bind is kept. If its password was changed
 since the bind it is kept without one, and until one is set it does not count
 as a working Identity for the lockout guard or the last-working-Identity rule
-(ADR 0001). Identities that a merge moved onto the account since the bind are
-kept, because they are another person's logins and removing them would leave
-that person with none. Any other Identity added since the bind is removed,
-whoever attached it, unless the resetting Admin chooses to keep it, as they
-would the corrected placeholder that releases an address collision. Nothing is
-kept on the word of another Admin account, because a wrongly bound person on
-an Admin's account can create one. It goes by time and not by which session
+(ADR 0001). Every Identity added since the bind is removed, whoever attached
+it and also when a merge moved it onto the account, unless the resetting Admin
+chooses to keep it. They would keep the corrected placeholder that releases an
+address collision, and the logins of a person whose account was rightly merged
+in, who would otherwise be left with none. Nothing is kept on the word of
+another Admin account, because a wrongly bound person on an Admin's account
+can create one and can run a merge. It goes by time and not by which session
 made the change, because a wrongly bound person can connect a second login and
 carry on through that one. Anything the owner added in that window goes too
 and can be added again. It does not undo other edits made since the bind, such
@@ -282,9 +282,9 @@ live account.
   bound, including one connected through a login that was itself connected
   since then, ends the account's sessions, revokes the API tokens created
   since then, clears a local password set since then, and lists the other
-  edits made since then in its audit entry. Identities a merge moved onto the
-  account since then are kept. Any other Identity added since then is kept
-  only when the resetting Admin chooses it.
+  edits made since then in its audit entry. An Identity added since then, one
+  a merge moved onto the account included, is kept only when the resetting
+  Admin chooses it.
 - A login that binds nothing and presents an address a placeholder holds
   creates no account and is asked to sign in to that placeholder's User. Local
   sign-up with such an address is refused.
