@@ -123,18 +123,20 @@ Today's lookup checks the email again on every login. The bind keeps the first
 key it sees, so a wrong first assertion does not correct itself. An Admin can
 reset a bound placeholder from the user editor, on an Admin's account as on
 any other, with an audit entry. The reset clears the key, the bound provider
-and the claims the binding login stored, and ends the sessions opened through
-that Identity. The next matching login through a pinned provider then binds it
-again. The reset does not restore a global role the wrong bind changed. On a
-provider with group mappings the right login re-syncs it, and otherwise an
-Admin sets it. Only an Identity that began as a placeholder can be reset. A
-local Identity cannot be reset, nor can an external one its owner connected
-while signed in. This ADR also adds one limit to ADR 0001, which lets a User
-remove their own Identities from the profile page: an Identity that began as a
-placeholder, bound or not, can be removed only by an Admin. Otherwise a
-wrongly bound person could connect a second login, remove the placeholder, and
-leave the Admin nothing to reset. A reset leaves a local password as it is
-unless it was set since the bind, as the next paragraph describes.
+and the claims the binding login stored, and ends the account's sessions. The
+next matching login through a pinned provider then binds it again. The reset
+does not restore a global role the wrong bind changed. On a provider with
+group mappings the right login re-syncs it, and otherwise an Admin sets it.
+Only an Identity that began as a placeholder can be reset. A local Identity
+cannot be reset, nor can an external one its owner connected while signed in.
+This ADR also adds one limit to ADR 0001, which lets a User remove their own
+Identities from the profile page: an Identity that began as a placeholder,
+bound or not, can be removed only by an Admin, and never from the Admin's own
+account. Otherwise a wrongly bound person could connect a second login, remove
+the placeholder, and leave the Admin nothing to reset, and one who landed on
+an Admin's account could do the same from the user editor. A reset leaves a
+local password as it is unless it was set since the bind, as the next
+paragraph describes.
 
 A wrongly bound person holds the account until the reset and can use it as its
 owner would. The reset therefore also undoes what it mechanically can. It
@@ -145,13 +147,15 @@ Identity that existed before the bind is kept without a password, and until
 one is set it does not count as a working Identity for the lockout guard or
 the last-working-Identity rule (ADR 0001). Identities that a merge moved onto
 the account since the bind are kept, because they are another person's logins
-and removing them would leave that person with none. It goes by time and not
-by which session made the change, because a wrongly bound person can connect a
-second login and carry on through that one. Anything the owner added in that
-window goes too and can be added again. It does not undo other edits made
-since the bind, such as a changed `primaryEmail` or an Identity that was
-removed. The audit entry lists them for the resetting Admin, and the owner
-gets back in by binding the placeholder again.
+and removing them would leave that person with none. Identities that another
+Admin attached since the bind are kept too, since an Admin chose them, and
+they include the corrected placeholder that releases an address collision. It
+goes by time and not by which session made the change, because a wrongly bound
+person can connect a second login and carry on through that one. Anything the
+owner added in that window goes too and can be added again. It does not undo
+other edits made since the bind, such as a changed `primaryEmail` or an
+Identity that was removed. The audit entry lists them for the resetting Admin,
+and the owner gets back in by binding the placeholder again.
 
 An Admin cannot know a person's subject or DN in advance, so attaching an
 external Identity under ADR 0001 means choosing a provider and entering the
@@ -261,7 +265,7 @@ live account.
 - A login whose email differs from a placeholder's in letter case does not
   bind it, as it would not reach the account today.
 - A User cannot remove an Identity that began as a placeholder from the
-  profile page, bound or not. An Admin can.
+  profile page, bound or not. An Admin can, on any account but their own.
 - After a reset, a local Identity that existed before the bind is kept without
   a password and does not count as a working Identity until one is set. A
   reset that would leave no Admin who can sign in is refused (ADR 0001).
@@ -270,7 +274,7 @@ live account.
   connected since then, ends the account's sessions, revokes the API tokens
   created since then, clears a local password set since then, and lists the
   other edits made since then in its audit entry. Identities a merge moved
-  onto the account since then are kept.
+  onto the account since then, and ones another Admin attached, are kept.
 - A login that binds nothing and presents an address a placeholder holds
   creates no account and is asked to sign in to that placeholder's User. Local
   sign-up with such an address is refused.
