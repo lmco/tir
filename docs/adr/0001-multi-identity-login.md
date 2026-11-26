@@ -261,8 +261,8 @@ Identities disagree changes no role.
   working.
 - An unknown identity is attached to a User only after the person signs in
   with one of that User's existing credentials, or when an Admin attaches it,
-  and never because the email addresses match. No confirmation email links a
-  login.
+  and never because the email addresses match, apart from the placeholder
+  bind in ADR 0003. No confirmation email links a login.
 - A first-time login by an unrecognised identity whose email matches an
   existing User creates no account and attaches nothing until that sign-in
   happens.
