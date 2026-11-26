@@ -140,17 +140,16 @@ provider. The User may be an Admin. Admins are trusted with each other's
 accounts, as they already are through password reset and provider
 configuration. Every attach and removal writes an audit entry that names who
 made it and on which account, and that entry is what makes a takeover visible.
-A User's last working Identity cannot be removed, so removing an Identity
-never leaves an account with none. A working Identity is a local one or one at
-a provider that still exists. Whether its owner can sign in through it today
-is the provider's to decide, by its group mappings for example, and is not
-part of this test. The one exception is a merge source, which ADR 0002 retires
-with no Identities. Re-sync still applies to an attached Identity, under the
-role rules below. If its provider claims map to Admin, the User is promoted at
-the next login, exactly as that identity would receive Admin on a new account,
-because the provider is the authority for claim-mapped roles. The promotion
-waits when another of the User's Identities grants a different role, as it
-does for any User whose Identities disagree.
+A User's last working Identity cannot be removed. A working Identity is a
+local one or one at a provider that still exists. Whether its owner can sign
+in through it today is the provider's to decide, by its group mappings for
+example, and is not part of this test. The one exception is a merge source,
+which ADR 0002 retires with no Identities. Re-sync still applies to an
+attached Identity, under the role rules below. If its provider claims map to
+Admin, the User is promoted at the next login, exactly as that identity would
+receive Admin on a new account, because the provider is the authority for
+claim-mapped roles. The promotion waits when another of the User's Identities
+grants a different role, as it does for any User whose Identities disagree.
 
 An Admin attaches an external Identity by choosing a provider and entering the
 person's email there, which creates a placeholder that binds at the person's
