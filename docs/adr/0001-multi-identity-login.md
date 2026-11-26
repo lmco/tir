@@ -174,8 +174,10 @@ holds at login. Provider claims stay the authority on roles, except that a
 login which would lower the last Admin who can sign in keeps the Admin role
 and writes a warning to the log. Mappings that give every Admin the User role,
 such as an Admin group next to a broad User group that every Admin is also in,
-would otherwise leave nobody able to correct them. An Admin who has left is
-stopped at the provider, where they can no longer sign in.
+would otherwise leave nobody able to correct them. The cost is that a last
+Admin who has left keeps the role for as long as any of their logins still
+works, so ending that access means closing the login, at the provider or in
+TIR.
 
 Provider claims are authoritative for the Identity they come from and are
 re-synced on every login, not only when the account is created. Each login
