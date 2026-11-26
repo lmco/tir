@@ -280,6 +280,9 @@ live account.
 - A login that binds nothing and presents an address a placeholder holds
   creates no account and is asked to sign in to that placeholder's User. Local
   sign-up with such an address is refused.
+- A login whose address is held by placeholders of two Users is rejected and
+  binds neither. After an Admin attaches a corrected placeholder and removes
+  the colliding one, the login binds.
 - A placeholder that a merge moved is bound only after a sign-in with one of
   the target's credentials, before and after a reset.
 - An account the migration left without an Identity, an Admin's included, can
