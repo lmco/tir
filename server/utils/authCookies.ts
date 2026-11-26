@@ -8,6 +8,14 @@ export const AUTH_COOKIES = {
   TEST_MODE: "tir_auth_test",
 } as const;
 
+/** For the short-lived cookies of a login in progress. Secure matches the session cookie. */
+export const LOGIN_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: "lax",
+  path: "/",
+  secure: process.env.NODE_ENV === "production",
+} as const;
+
 export function clearAuthCookie(event: H3Event, name: string) {
   deleteCookie(event, name, { path: "/" });
 }

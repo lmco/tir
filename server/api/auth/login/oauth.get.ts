@@ -1,6 +1,6 @@
 import { defineEventHandler, getQuery, setCookie, sendRedirect, setResponseHeader } from "h3";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
-import { AUTH_COOKIES, clearLoginCookies } from "~/server/utils/authCookies";
+import { AUTH_COOKIES, LOGIN_COOKIE_OPTIONS, clearLoginCookies } from "~/server/utils/authCookies";
 import { testResultPage } from "~/server/utils/testResultPage";
 
 export default defineEventHandler(async (event) => {
@@ -24,9 +24,9 @@ export default defineEventHandler(async (event) => {
     const result = await authService.authenticate(`oauth:${providerId}`, event, {});
 
     if (result.redirect) {
-      setCookie(event, AUTH_COOKIES.STATE, event.context.auth.state, { httpOnly: true, sameSite: "lax", path: "/" });
+      setCookie(event, AUTH_COOKIES.STATE, event.context.auth.state, LOGIN_COOKIE_OPTIONS);
       if (query.test === "true") {
-        setCookie(event, AUTH_COOKIES.TEST_MODE, "1", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 300 });
+        setCookie(event, AUTH_COOKIES.TEST_MODE, "1", { ...LOGIN_COOKIE_OPTIONS, maxAge: 300 });
       }
       return sendRedirect(event, result.redirect);
     }
