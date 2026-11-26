@@ -30,6 +30,7 @@ export default defineEventHandler(async (event) => {
 
     if (isTestMode) {
       clearAuthCookie(event, AUTH_COOKIES.TEST_MODE);
+      await requireAdmin(event);
       if (typeof provider.handleTestCallback !== "function") {
         throw new H3Error(`Provider '${providerKey}' does not support test login.`);
       }

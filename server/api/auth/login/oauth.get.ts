@@ -9,6 +9,8 @@ export default defineEventHandler(async (event) => {
 
     const authService = getAuthServiceManager();
     const query = getQuery(event);
+    // Test Login returns the profile and the role the mappings would grant, which is for Admins.
+    if (query.test === "true") await requireAdmin(event);
 
     let providerId = query.provider as string | undefined;
     if (!providerId) {
