@@ -88,8 +88,12 @@ an account as to any User (ADR 0001), an Admin's account included.
 The migration also logs and flags every provider it pins a placeholder to
 whose verified-email setting is off, and every LDAP provider it pins one to,
 because a placeholder at such a provider binds on an address the provider has
-not verified. Before the cutover the operator turns the setting on, or
-confirms that users of the directory cannot edit their own mail attribute.
+not verified. The flag arrives with the cutover and not ahead of it, because
+the verified-email setting comes in the same upgrade and no earlier release
+exists in which to set it. Acting on it is the operator's first step after the
+upgrade: turn the setting on, or confirm that users of the directory cannot
+edit their own mail attribute. Until then a placeholder at a flagged provider
+can be bound on an unverified address.
 
 An email must never name two accounts at a login. An address held by a
 placeholder is reserved for as long as the placeholder exists, bound or not,
@@ -148,15 +152,17 @@ since the bind it is kept without one, and until one is set it does not count
 as a working Identity for the lockout guard or the last-working-Identity rule
 (ADR 0001). Identities that a merge moved onto the account since the bind are
 kept, because they are another person's logins and removing them would leave
-that person with none. Identities that another Admin attached since the bind
-are kept too, since an Admin chose them, and they include the corrected
-placeholder that releases an address collision. It goes by time and not by
-which session made the change, because a wrongly bound person can connect a
-second login and carry on through that one. Anything the owner added in that
-window goes too and can be added again. It does not undo other edits made
-since the bind, such as a changed `primaryEmail` or an Identity that was
-removed. The audit entry lists them for the resetting Admin, and the owner
-gets back in by binding the placeholder again.
+that person with none. Any other Identity added since the bind is removed,
+whoever attached it, unless the resetting Admin chooses to keep it, as they
+would the corrected placeholder that releases an address collision. Nothing is
+kept on the word of another Admin account, because a wrongly bound person on
+an Admin's account can create one. It goes by time and not by which session
+made the change, because a wrongly bound person can connect a second login and
+carry on through that one. Anything the owner added in that window goes too
+and can be added again. It does not undo other edits made since the bind, such
+as a changed `primaryEmail` or an Identity that was removed. The audit entry
+lists them for the resetting Admin, and the owner gets back in by binding the
+placeholder again.
 
 An Admin cannot know a person's subject or DN in advance, so attaching an
 external Identity under ADR 0001 means choosing a provider and entering the
@@ -199,9 +205,10 @@ live account.
 - Bad, because a reset sends the bind back to whoever a pinned provider
   reports under the placeholder's address, which the provider may have given
   to someone else since the first bind.
-- Bad, because an LDAP account created without a mail attribute holds an
-  address TIR made up. If the directory supplies a real one later, the
-  placeholder does not bind and an Admin has to attach a new one.
+- Bad, because an LDAP account created without a mail attribute holds an address
+  TIR made up from the username, and its placeholder binds on that address. If
+  the directory supplies a real one later, the placeholder does not bind and
+  an Admin has to attach a new one.
 - Bad, because a provider that lets a person set an unverified address of
   their own choosing, with its verified-email setting off, lets anyone at that
   provider who sets a placeholder's address bind it, at the first bind and
@@ -271,12 +278,13 @@ live account.
   password unchanged unless that was set since the bind. One whose password
   was cleared does not count as a working Identity until a password is set. A
   reset that would leave no Admin who can sign in is refused (ADR 0001).
-- A reset removes every Identity connected to the account since the
-  placeholder bound, including one connected through a login that was itself
-  connected since then, ends the account's sessions, revokes the API tokens
-  created since then, clears a local password set since then, and lists the
-  other edits made since then in its audit entry. Identities a merge moved
-  onto the account since then, and ones another Admin attached, are kept.
+- A reset removes every Identity connected to the account since the placeholder
+  bound, including one connected through a login that was itself connected
+  since then, ends the account's sessions, revokes the API tokens created
+  since then, clears a local password set since then, and lists the other
+  edits made since then in its audit entry. Identities a merge moved onto the
+  account since then are kept. Any other Identity added since then is kept
+  only when the resetting Admin chooses it.
 - A login that binds nothing and presents an address a placeholder holds
   creates no account and is asked to sign in to that placeholder's User. Local
   sign-up with such an address is refused.
