@@ -11,6 +11,7 @@ import {
 } from "~/server/utils/config/validateAuthConfig";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
 import { anyAdminCanSignIn, LOCKOUT_REFUSAL } from "~/server/auth/signInMethod";
+import { withLockoutGuardLock } from "~/server/auth/lockoutGuardLock";
 import { User } from "~/db/models";
 
 export default defineEventHandler(async (event) => {
@@ -24,44 +25,48 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: error.message });
   }
 
-  const current = await loadAuthConfig();
-  // A save keeps the stored value of any field the request leaves out, so the checks must too.
-  const overStored = <T extends { id: string }>(stored: T[], sent?: T[]) =>
-    sent?.map((p) => ({ ...stored.find((s) => s.id === p.id), ...p })) ?? stored;
-  const resulting = {
-    ...current,
-    ...input,
-    local: { ...current.local, ...input.local },
-    ldap: overStored(current.ldap, input.ldap),
-    oidc: overStored(current.oidc, input.oidc),
-    oauth: overStored(current.oauth, input.oauth),
-  };
-  if (!hasEnabledProvider(resulting)) {
-    throw createError({
-      statusCode: 400,
-      message: "At least one authentication provider must be enabled.",
-    });
-  }
+  // The stored configuration and the Admins are read under the lock, so this save and a
+  // concurrent demotion cannot each pass the check on the other's old state.
+  await withLockoutGuardLock(async () => {
+    const current = await loadAuthConfig();
+    // A save keeps the stored value of any field the request leaves out, so the checks must too.
+    const overStored = <T extends { id: string }>(stored: T[], sent?: T[]) =>
+      sent?.map((p) => ({ ...stored.find((s) => s.id === p.id), ...p })) ?? stored;
+    const resulting = {
+      ...current,
+      ...input,
+      local: { ...current.local, ...input.local },
+      ldap: overStored(current.ldap, input.ldap),
+      oidc: overStored(current.oidc, input.oidc),
+      oauth: overStored(current.oauth, input.oauth),
+    };
+    if (!hasEnabledProvider(resulting)) {
+      throw createError({
+        statusCode: 400,
+        message: "At least one authentication provider must be enabled.",
+      });
+    }
 
-  // Only a change that takes the last way in away is refused, so a broken setup can still be repaired.
-  const admins = await User.findAll({
-    where: { UserRoleId: 1 },
-    attributes: ["UserRoleId", "creationMethod", "password"],
+    // Only a change that takes the last way in away is refused, so a broken setup can still be repaired.
+    const admins = await User.findAll({
+      where: { UserRoleId: 1 },
+      attributes: ["UserRoleId", "creationMethod", "password"],
+    });
+    const couldBefore = anyAdminCanSignIn(admins, availableMethods(current));
+    if (couldBefore && !anyAdminCanSignIn(admins, availableMethods(resulting))) {
+      throw createError({ statusCode: 400, message: LOCKOUT_REFUSAL });
+    }
+
+    const reentry = await providersNeedingSecretReentry(input);
+    if (reentry.length > 0) {
+      throw createError({
+        statusCode: 400,
+        message: `Re-enter the password or client secret for ${reentry.join(", ")}: the server address, client identity or TLS settings changed.`,
+      });
+    }
+
+    await saveAuthConfig(input);
   });
-  const couldBefore = anyAdminCanSignIn(admins, availableMethods(current));
-  if (couldBefore && !anyAdminCanSignIn(admins, availableMethods(resulting))) {
-    throw createError({ statusCode: 400, message: LOCKOUT_REFUSAL });
-  }
-
-  const reentry = await providersNeedingSecretReentry(input);
-  if (reentry.length > 0) {
-    throw createError({
-      statusCode: 400,
-      message: `Re-enter the password or client secret for ${reentry.join(", ")}: the server address, client identity or TLS settings changed.`,
-    });
-  }
-
-  await saveAuthConfig(input);
 
   const newConfig = await loadAuthConfig();
 

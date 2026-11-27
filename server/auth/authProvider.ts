@@ -1,7 +1,7 @@
 import { H3Error } from "h3";
 import { DateTime } from "luxon";
-import { Transaction } from "sequelize";
 import { User } from "../../db/models";
+import { withLockoutGuardLock } from "./lockoutGuardLock";
 import { SessionService } from "./sessionService";
 import { demotionLocksOut, signInRefusal } from "./signInMethod";
 import type { MethodAvailability } from "./signInMethod";
@@ -33,25 +33,18 @@ const ADMIN_ROLE_ID = 1;
 
 /**
  * Lowers an Admin's role unless that would leave no Admin able to sign in, and says whether it did.
- * The check and the write share one transaction that holds the Admin rows, so two Admins signing
- * in at the same moment cannot each see the other as the Admin who remains.
+ * Two Admins signing in at the same moment must not each see the other as the Admin who remains.
  */
-async function demoteUnlessLastAdmin(
-  user: User,
-  roleId: number,
-  available: MethodAvailability,
-): Promise<boolean> {
-  return await User.sequelize!.transaction({ type: Transaction.TYPES.IMMEDIATE }, async (transaction) => {
+function demoteUnlessLastAdmin(user: User, roleId: number, available: MethodAvailability): Promise<boolean> {
+  return withLockoutGuardLock(async () => {
     const admins = await User.findAll({
       where: { UserRoleId: ADMIN_ROLE_ID },
       attributes: ["id", "UserRoleId", "creationMethod", "password"],
-      transaction,
-      lock: transaction.LOCK.UPDATE,
     });
     if (demotionLocksOut(admins, user.id, available)) return false;
     user.UserRoleId = roleId;
     user.lastUpdate = DateTime.now().toISO();
-    await user.save({ transaction });
+    await user.save();
     return true;
   });
 }
@@ -99,7 +92,6 @@ export abstract class AuthProvider {
     const roleDiffers = Boolean(userRoleId) && user.UserRoleId !== userRoleId;
     const isDemotion = roleDiffers && user.UserRoleId === ADMIN_ROLE_ID;
     // Group mappings that give every Admin the User role would otherwise leave nobody to fix them.
-    // The configuration is read first, since nothing else may query while the transaction is open.
     const demoted =
       isDemotion && (await demoteUnlessLastAdmin(user, userRoleId!, availableMethods(await loadAuthConfig())));
     const demotionKept = isDemotion && !demoted;

@@ -8,6 +8,7 @@ import {
   LOCKOUT_REFUSAL,
 } from "~/server/auth/signInMethod";
 import { availableMethods, loadAuthConfig } from "~/server/utils/config/authConfig";
+import { withLockoutGuardLock } from "~/server/auth/lockoutGuardLock";
 import { SessionService } from "~/server/auth/sessionService";
 
 const sessionService = new SessionService();
@@ -108,21 +109,26 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (body.signInMethod !== undefined || body.UserRoleId !== undefined) {
-    const others = await User.findAll({ attributes: ["id", "UserRoleId", "creationMethod", "password"] });
-    const available = availableMethods(await loadAuthConfig());
-    const after = others.map((u) =>
-      u.id === user.id
-        ? { UserRoleId: user.UserRoleId, creationMethod: user.creationMethod, password: u.password }
-        : u,
-    );
-    if (anyAdminCanSignIn(others, available) && !anyAdminCanSignIn(after, available)) {
-      throw createError({ statusCode: 400, statusMessage: LOCKOUT_REFUSAL });
-    }
-  }
-
   user.lastUpdate = DateTime.now().toISO();
-  await user.save();
+  if (body.signInMethod === undefined && body.UserRoleId === undefined) {
+    await user.save();
+  } else {
+    // The other accounts are read under the lock, so two Admins lowering each other at the same
+    // moment cannot both pass.
+    await withLockoutGuardLock(async () => {
+      const others = await User.findAll({ attributes: ["id", "UserRoleId", "creationMethod", "password"] });
+      const available = availableMethods(await loadAuthConfig());
+      const after = others.map((u) =>
+        u.id === user.id
+          ? { UserRoleId: user.UserRoleId, creationMethod: user.creationMethod, password: u.password }
+          : u,
+      );
+      if (anyAdminCanSignIn(others, available) && !anyAdminCanSignIn(after, available)) {
+        throw createError({ statusCode: 400, statusMessage: LOCKOUT_REFUSAL });
+      }
+      await user.save();
+    });
+  }
 
   if (body.signInMethod !== undefined) {
     // A session opened through the old method must not outlive it. An Admin changing their
