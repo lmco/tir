@@ -23,6 +23,8 @@ TirConfig.init(
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
+      // Without this Sequelize sends id as NULL on insert, which Postgres rejects.
+      autoIncrement: true,
     },
     key: {
       type: DataTypes.TEXT,
