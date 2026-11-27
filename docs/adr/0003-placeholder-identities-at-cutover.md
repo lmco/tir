@@ -216,15 +216,16 @@ cannot be the account's only way in.
   TIR made up from the username, and its placeholder binds on that address. If
   the directory supplies a real one later, the placeholder does not bind and
   an Admin has to attach a new one.
-- Bad, because a provider that lets a person set an unverified address of
-  their own choosing, with its verified-email setting off, lets anyone at that
+- Bad, because a provider that lets a person set an unverified address of their
+  own choosing, with its verified-email setting off, lets anyone at that
   provider who sets a placeholder's address bind it, at the first bind and
   after a reset. For such a provider the setting has to be on. LDAP has no
   such setting, and the address is whatever the directory's mail attribute
   holds. A bind through LDAP is safe only where users cannot edit that
-  attribute themselves, which the operator has to confirm. The migration
-  flags both kinds of provider, and every account that signs in externally is
-  exposed until its first login after the cutover.
+  attribute themselves, which the operator has to confirm. The migration flags
+  both kinds of provider, and every account that signs in externally is
+  exposed until its first login after the cutover. A placeholder an Admin
+  attaches at such a provider later is not flagged.
 - Bad, because two unlikely states leave a deployment's only Admin, when that
   account's one Identity is an unbound placeholder, with no recovery inside
   TIR. One is an LDAP directory starting to supply a real address in place of
