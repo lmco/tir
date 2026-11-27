@@ -128,13 +128,16 @@ key it sees, so a wrong first assertion does not correct itself. An Admin can
 reset a bound placeholder from the user editor, on an Admin's account as on
 any other, with an audit entry. The reset clears the key, the bound provider
 and the claims the binding login stored, and ends the account's sessions. The
-next matching login through a pinned provider then binds it again. The reset
-does not restore a global role the wrong bind changed. On a provider with
-group mappings the right login re-syncs it, and otherwise an Admin sets it.
-Only an Identity that began as a placeholder can be reset. A local Identity
-cannot be reset, nor can an external one its owner connected while signed in.
-This ADR also adds one limit to ADR 0001, which lets a User remove their own
-Identities from the profile page: an Identity that began as a placeholder,
+next matching login through a pinned provider then binds it again, except that
+the reset remembers the key it cleared and that key cannot bind this
+placeholder a second time. Without that, the wrongly bound person could sign
+in again before the owner does. The reset does not restore a global role the
+wrong bind changed. On a provider with group mappings the right login re-syncs
+it, and otherwise an Admin sets it. Only an Identity that began as a
+placeholder can be reset. A local Identity cannot be reset, nor can an
+external one its owner connected while signed in. ADR 0001 lets a User remove
+their own Identities from the profile page, except one that began as a
+placeholder. This ADR is where that exception comes from: such an Identity,
 bound or not, can be removed only by an Admin, and never from the Admin's own
 account. Otherwise a wrongly bound person could connect a second login, remove
 the placeholder, and leave the Admin nothing to reset, and one who landed on
@@ -282,10 +285,11 @@ cannot be the account's only way in.
   bind it, as it would not reach the account today.
 - A User cannot remove an Identity that began as a placeholder from the
   profile page, bound or not. An Admin can, on any account but their own.
-- After a reset, a local Identity that existed before the bind is kept, with its
-  password unchanged unless that was set since the bind. One whose password
-  was cleared does not count as a working Identity until a password is set. A
-  reset that would leave no Admin who can sign in is refused (ADR 0001).
+- After a reset, the key that was cleared cannot bind the placeholder again. A
+  local Identity that existed before the bind is kept, with its password
+  unchanged unless that was set since the bind. One whose password was cleared
+  does not count as a working Identity until a password is set. A reset that
+  would leave no Admin who can sign in is refused (ADR 0001).
 - A reset removes every Identity connected to the account since the placeholder
   bound, including one connected through a login that was itself connected
   since then, ends the account's sessions, revokes the API tokens created
