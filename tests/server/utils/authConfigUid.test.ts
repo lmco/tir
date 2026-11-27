@@ -110,3 +110,15 @@ describe("stored secret and TLS settings", () => {
     expect(await providersNeedingSecretReentry({ oidc: [{ ...saved, sslInsecure: true }] })).toEqual(["OIDC"]);
   });
 });
+
+describe("fallback email domain", () => {
+  beforeEach(() => store.clear());
+
+  test("a save that does not carry it keeps the stored value", async () => {
+    const ldap = { id: "openldap-1", label: "LDAP", url: "ldaps://ldap.example.com", bindDn: "cn=admin" } as any;
+    await saveAuthConfig({ ldap: [ldap] });
+    store.set("auth:ldap:openldap-1:fallbackEmailDomain", "example.com");
+    await saveAuthConfig({ ldap: [{ ...ldap, label: "Renamed" }] });
+    expect((await loadAuthConfig()).ldap[0].fallbackEmailDomain).toBe("example.com");
+  });
+});

@@ -35,6 +35,11 @@ describe("validateAuthConfigInput", () => {
     expect(() => validateAuthConfigInput({ [kind]: [provider] })).toThrow(message);
   });
 
+  test("drops a fallback email domain sent by the client", () => {
+    const out = validateAuthConfigInput({ ldap: [{ ...ldap, fallbackEmailDomain: "example.com" }] });
+    expect(out.ldap).toEqual([ldap]);
+  });
+
   test("drops a uid sent by the client", () => {
     const out = validateAuthConfigInput({ ldap: [{ ...ldap, uid: "chosen-by-client" }] });
     expect(out.ldap).toEqual([ldap]);

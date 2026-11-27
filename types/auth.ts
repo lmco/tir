@@ -72,7 +72,7 @@ export const LDAP_PROVIDER_SCHEMA = {
   sslCa: { type: "str", default: "" },
   groupAttribute: { type: "str", default: "memberOf" },
   groupMappings: { type: "str", default: "" },
-  fallbackEmailDomain: { type: "str", default: "", oneOf: ["", "example.com"] },
+  fallbackEmailDomain: { type: "str", default: "", serverOnly: true },
 } as const;
 
 export type OIDCGroupClaimType = "scope" | "claim";

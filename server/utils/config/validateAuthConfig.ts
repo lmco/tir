@@ -11,7 +11,13 @@ export const PROVIDER_ID_PATTERN = /^[a-z0-9-]+$/;
 
 export class AuthConfigValidationError extends Error {}
 
-type FieldSpec = { type: string; omit?: boolean; setFlag?: string; oneOf?: readonly string[] };
+type FieldSpec = {
+  type: string;
+  omit?: boolean;
+  setFlag?: string;
+  oneOf?: readonly string[];
+  serverOnly?: boolean;
+};
 type Schema = Record<string, FieldSpec>;
 
 function fail(message: string): never {
@@ -39,6 +45,8 @@ function expectType(where: string, field: string, value: unknown, type: string) 
 function pickBySchema(where: string, schema: Schema, item: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
   for (const [field, spec] of Object.entries(schema)) {
+    // Left out, so a save keeps the stored value whatever the request carried.
+    if (spec.serverOnly) continue;
     const value = item[field];
     if (value !== undefined) {
       expectType(where, field, value, spec.type);
