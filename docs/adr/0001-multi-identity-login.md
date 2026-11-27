@@ -287,9 +287,9 @@ Identities disagree changes no role.
   whose claims would lower that Admin's role leaves it unchanged.
 - Removing a User's last working Identity is rejected, and an Identity at a
   deleted provider does not count as working. A signed-in user, Admin or not,
-  can remove one of their own Identities from the profile page but not the
-  last working one. Giving a User a second local Identity is rejected by
-  every route.
+  can remove one of their own Identities from the profile page, but not the
+  last working one and not one that began as a placeholder (ADR 0003). Giving
+  a User a second local Identity is rejected by every route.
 - With a provider's create switch off, a first-time login with no matching
   User creates no account.
 - On a provider with group mappings, a login in no mapped group is rejected
