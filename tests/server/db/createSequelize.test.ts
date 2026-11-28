@@ -42,4 +42,18 @@ describe("createSequelize", () => {
 
     expect(timeout).toEqual([{ timeout: 5000 }]);
   });
+
+  test("starts sqlite transactions as IMMEDIATE", async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "tir-sqlite-"));
+    const statements: string[] = [];
+    sequelize = createSequelize(
+      { dialect: "sqlite", storage: path.join(dir, "test.sqlite") },
+      { logging: (sql: string) => statements.push(sql) },
+    );
+
+    const transaction = await sequelize.transaction();
+    await transaction.rollback();
+
+    expect(statements.some((sql) => sql.includes("BEGIN IMMEDIATE TRANSACTION"))).toBe(true);
+  });
 });

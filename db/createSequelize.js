@@ -1,11 +1,16 @@
 import { promisify } from "node:util";
-import { Sequelize } from "sequelize";
+import { Sequelize, Transaction } from "sequelize";
 
 const SQLITE_BUSY_TIMEOUT_MS = 5000;
 
 export function createSequelize(dbConfig, options = {}) {
   if (dbConfig.dialect === "sqlite") {
-    const sequelize = new Sequelize({ dialect: "sqlite", storage: dbConfig.storage, ...options });
+    const sequelize = new Sequelize({
+      dialect: "sqlite",
+      storage: dbConfig.storage,
+      transactionType: Transaction.TYPES.IMMEDIATE,
+      ...options,
+    });
     applySqlitePragmas(sequelize);
     return sequelize;
   }
