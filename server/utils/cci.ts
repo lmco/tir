@@ -31,16 +31,20 @@ export const importCciList = async (
   newCciList.importComplete = false;
   let cciImportTransaction = await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE });
 
-  // newCciList.save();
-  newCciList.save({ transaction: cciImportTransaction });
-
-  const currentCciItems = await CciItem.findAll({
-    where: { CciListId: newCciList.id },
-  });
-  const currentPolicyDocuments = await PolicyDocument.findAll();
-  const currentCciReferences = await CciReference.findAll();
-
   try {
+    await newCciList.save({ transaction: cciImportTransaction });
+
+    const currentCciItems = await CciItem.findAll({
+      where: { CciListId: newCciList.id },
+      transaction: cciImportTransaction,
+    });
+    const currentPolicyDocuments = await PolicyDocument.findAll({
+      transaction: cciImportTransaction,
+    });
+    const currentCciReferences = await CciReference.findAll({
+      transaction: cciImportTransaction,
+    });
+
     streamer.status(`Number of CCI Items ${jsonObj.cci_list.cci_items.cci_item.length}`);
     streamer.progress(0);
     let lastPercentage = -1;
@@ -131,7 +135,9 @@ export const importCciList = async (
             cciReference = existingRef;
           }
 
-          const existingAssociation = await cciItem.hasCciReference(cciReference);
+          const existingAssociation = await cciItem.hasCciReference(cciReference, {
+            transaction: cciImportTransaction,
+          });
 
           // If the association does not exist, create it
           if (!existingAssociation) {
@@ -143,7 +149,7 @@ export const importCciList = async (
       // Sqlite lock will time out if we try to transact a full index
       if (sequelize.getDialect() === "sqlite") {
         if (item.$.id === "CCI-002500") {
-          cciImportTransaction.commit();
+          await cciImportTransaction.commit();
           cciImportTransaction = await sequelize.transaction({ type: Transaction.TYPES.IMMEDIATE });
         }
       }
@@ -162,7 +168,7 @@ export const importCciList = async (
 
     return { success: true, error: "" };
   } catch (error) {
-    logger.error("Import CCI erorr", error);
+    logger.error("Import CCI error", error);
     await cciImportTransaction.rollback();
     return { success: false, error: `CCI Import failed. ${error}` };
   }
