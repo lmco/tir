@@ -4,7 +4,6 @@ import { User } from "../../db/models";
 import { withLockoutGuardLock } from "./lockoutGuardLock";
 import { SessionService } from "./sessionService";
 import { demotionLocksOut, signInRefusal } from "./signInMethod";
-import type { MethodAvailability } from "./signInMethod";
 import { availableMethods, loadAuthConfig } from "~/server/utils/config/authConfig";
 import type { AuthEvent, SignInMethod } from "~/types/auth";
 
@@ -35,12 +34,13 @@ const ADMIN_ROLE_ID = 1;
  * Lowers an Admin's role unless that would leave no Admin able to sign in, and says whether it did.
  * Two Admins signing in at the same moment must not each see the other as the Admin who remains.
  */
-function demoteUnlessLastAdmin(user: User, roleId: number, available: MethodAvailability): Promise<boolean> {
+function demoteUnlessLastAdmin(user: User, roleId: number): Promise<boolean> {
   return withLockoutGuardLock(async () => {
     const admins = await User.findAll({
       where: { UserRoleId: ADMIN_ROLE_ID },
       attributes: ["id", "UserRoleId", "creationMethod", "password"],
     });
+    const available = availableMethods(await loadAuthConfig());
     if (demotionLocksOut(admins, user.id, available)) return false;
     user.UserRoleId = roleId;
     user.lastUpdate = DateTime.now().toISO();
@@ -92,8 +92,7 @@ export abstract class AuthProvider {
     const roleDiffers = Boolean(userRoleId) && user.UserRoleId !== userRoleId;
     const isDemotion = roleDiffers && user.UserRoleId === ADMIN_ROLE_ID;
     // Group mappings that give every Admin the User role would otherwise leave nobody to fix them.
-    const demoted =
-      isDemotion && (await demoteUnlessLastAdmin(user, userRoleId!, availableMethods(await loadAuthConfig())));
+    const demoted = isDemotion && (await demoteUnlessLastAdmin(user, userRoleId!));
     const demotionKept = isDemotion && !demoted;
     const roleChanged = roleDiffers && !demotionKept;
     if (roleChanged && !isDemotion) user.UserRoleId = userRoleId!;
