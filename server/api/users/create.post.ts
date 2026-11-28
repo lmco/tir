@@ -1,6 +1,19 @@
 import { DateTime } from "luxon";
 import { User, Timezone, UserRole } from "../../../db/models";
 
+const DEFAULT_TIMEZONE_NAMES = ["Etc/UTC", "UTC"];
+
+async function findDefaultTimezone() {
+  const utc = await Timezone.findOne({
+    where: { name: DEFAULT_TIMEZONE_NAMES },
+    order: [["name", "ASC"]],
+  });
+  if (utc) {
+    return utc;
+  }
+  return Timezone.findOne({ order: [["id", "ASC"]] });
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
   const { firstName, lastName, email, UserRoleId, TimezoneName } = body;
@@ -18,7 +31,7 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Email required.",
     });
   }
-  // check if user exist
+
   const userExist = await User.findOne({ where: { email } });
   if (userExist) {
     logger.error(`Sorry, this email is taken ${body.email}`);
@@ -28,21 +41,24 @@ export default defineEventHandler(async (event) => {
     });
   }
   const userRole = await UserRole.findByPk(UserRoleId);
-  let newUser: User | null = null;
 
-  // Find the timezone with the specified name
-  let timezone;
+  const timezone = TimezoneName
+    ? await Timezone.findOne({ where: { name: TimezoneName } })
+    : await findDefaultTimezone();
 
-  if (TimezoneName) {
-    timezone = await Timezone.findOne({ where: { name: TimezoneName } });
-  } else {
-    timezone = await Timezone.findOne({ where: { name: "Etc/UTC" } });
+  if (TimezoneName && !timezone) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Unknown timezone ${TimezoneName}.`,
+    });
   }
 
   if (!timezone) {
-    console.error(`Timezone with name ${TimezoneName} not found.`);
-    logger.error(`Timezone with name ${TimezoneName} not found.`);
-    return;
+    logger.error("No timezones are seeded, cannot create a user.");
+    throw createError({
+      statusCode: 500,
+      statusMessage: "No timezones are available.",
+    });
   }
 
   const violations = await getPasswordViolations(body.password);
@@ -71,7 +87,7 @@ export default defineEventHandler(async (event) => {
 
   const password = hashPassword(body.password, salt, SECRET_KEY);
 
-  await User.create({
+  const newUser = await User.create({
     firstName,
     lastName,
     email,
@@ -88,5 +104,5 @@ export default defineEventHandler(async (event) => {
     message: `User ${email} Successfully Created with Role: ${userRole?.name}`,
   });
 
-  return newUser;
+  return User.findByPk(newUser.id, { attributes: { exclude: ["password", "salt"] } });
 });
