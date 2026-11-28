@@ -2,6 +2,8 @@ import { DateTime } from "luxon";
 import { User } from "../../../db/models";
 import { generateSalt, hashPassword } from "~/server/utils/hash";
 import { getPasswordViolations } from "~/server/utils/password";
+import { accountMethod } from "~/server/auth/signInMethod";
+import { SIGN_IN_METHOD_LABELS } from "~/types/auth";
 
 const config = useRuntimeConfig();
 
@@ -33,6 +35,13 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  if (accountMethod(user) !== "local") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `This account signs in with ${SIGN_IN_METHOD_LABELS[accountMethod(user)]}. Change its sign-in method to Local before setting a password.`,
+    });
+  }
+
   const violations = await getPasswordViolations(body.password);
   if (violations.length > 0) {
     logger.info({
@@ -51,7 +60,9 @@ export default defineEventHandler(async (event) => {
   }
 
   user.password = hashPassword(body.password, user.salt, SECRET_KEY);
-  user.passwordChangedAt = DateTime.now().toISO();
+  const now = DateTime.now().toISO();
+  user.passwordChangedAt = now;
+  user.lastUpdate = now;
 
   await user.save();
 

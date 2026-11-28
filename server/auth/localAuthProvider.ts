@@ -3,6 +3,7 @@ import { User } from "../../db/models";
 import { UserRole } from "../../db/models/userRole";
 import { AuthProvider } from "./authProvider";
 import { SessionService } from "./sessionService";
+import { signInRefusal } from "./signInMethod";
 import { verifyPassword } from "~/server/utils/hash";
 
 const sessionService = new SessionService();
@@ -30,6 +31,11 @@ export class LocalAuthProvider extends AuthProvider {
       logger.info({ service: "auth", message: `User missing role: ${email}` });
       throw createError({ statusCode: 401, statusMessage: "User Account Error." });
     }
+    // The same answer as a wrong password, so the form does not reveal which emails have accounts.
+    if (signInRefusal(user, "local") || !user.password) {
+      logger.info({ service: "auth", message: `Local login refused for ${email}: not a local account` });
+      throw createError({ statusCode: 401, statusMessage: "Invalid User or Password." });
+    }
     const validPassword = verifyPassword(password, user.password, user.salt, config.secret_key!);
     if (!validPassword) {
       logger.info({ service: "auth", message: `Bad password for user: ${email}` });
@@ -43,7 +49,7 @@ export class LocalAuthProvider extends AuthProvider {
     return { sessionId, userId: user.id };
   }
 
-  async validateToken(token: string) {
-    throw new Error("Token validation not implemented for LocalAuthProvider");
+  validateToken(_token: string): Promise<any> {
+    return Promise.reject(new Error("Token validation not implemented for LocalAuthProvider"));
   }
 }

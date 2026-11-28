@@ -1,58 +1,166 @@
 import type { H3Event } from "h3";
 
-export const PROVIDERS = ["local", "ldap", "oidc"] as const;
-export type Provider = (typeof PROVIDERS)[number];
-
 export type AuthEvent = H3Event;
 
-export type AuthConfig = {
-  local: {
-    enable: boolean;
-    passwordLength: number;
-    upperCount: number;
-    lowerCount: number;
-    numberCount: number;
-    specialCount: number;
-  };
-  ldap: {
-    enable: boolean;
-    url: string;
-    bindDn: string;
-    passwordSet: boolean;
-    baseDn: string;
-  };
-  oidc: {
-    enable: boolean;
-    url: string;
-    clientId: string;
-    secretSet: boolean;
-    callback: string;
-    groupMappings: string;
-  };
-};
+export interface LoginTestResult {
+  loading: boolean;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  groups?: string[];
+  userRoleId?: number | null;
+  denied?: boolean;
+  error?: string;
+}
+
+export interface ConnectionTestResult {
+  loading: boolean;
+  checks?: { name: string; ok: boolean; message: string }[];
+  error?: string;
+}
+
+export interface LocalAuthConfig {
+  enable: boolean;
+  passwordLength: number;
+  upperCount: number;
+  lowerCount: number;
+  numberCount: number;
+  specialCount: number;
+}
 
 export const LOCAL_SCHEMA = {
-  enable: { type: "bool", default: false },
-  passwordLength: { type: "num", default: 8 },
-  upperCount: { type: "num", default: 0 },
-  lowerCount: { type: "num", default: 0 },
-  numberCount: { type: "num", default: 0 },
-  specialCount: { type: "num", default: 0 },
+  enable: { type: "bool", default: true },
+  passwordLength: { type: "num", default: 15 },
+  upperCount: { type: "num", default: 1 },
+  lowerCount: { type: "num", default: 1 },
+  numberCount: { type: "num", default: 1 },
+  specialCount: { type: "num", default: 1 },
 } as const;
 
-export const LDAP_SCHEMA = {
+export type LDAPTemplate = "openldap" | "msad";
+
+export interface LDAPProviderConfig {
+  id: string;
+  /** Assigned by the server when the provider is first saved. Absent on a provider not yet saved. */
+  uid?: string;
+  label: string;
+  template: LDAPTemplate;
+  enable: boolean;
+  url: string;
+  bindDn: string;
+  passwordSet: boolean;
+  baseDn: string;
+  ssl: boolean;
+  sslInsecure: boolean;
+  sslCa: string;
+  groupAttribute: string;
+  groupMappings: string;
+  /** Set only on the provider an upgrade carried over, so its accounts with a made-up address keep it. */
+  fallbackEmailDomain: string;
+}
+
+export const LDAP_PROVIDER_SCHEMA = {
+  label: { type: "str", default: "LDAP" },
+  template: { type: "str", default: "openldap", oneOf: ["openldap", "msad"] },
   enable: { type: "bool", default: false },
   url: { type: "str", default: "" },
   bindDn: { type: "str", default: "" },
   password: { type: "str", default: "", omit: true, setFlag: "passwordSet" },
   baseDn: { type: "str", default: "" },
+  ssl: { type: "bool", default: false },
+  sslInsecure: { type: "bool", default: false },
+  sslCa: { type: "str", default: "" },
+  groupAttribute: { type: "str", default: "memberOf" },
+  groupMappings: { type: "str", default: "" },
+  fallbackEmailDomain: { type: "str", default: "", serverOnly: true },
 } as const;
 
-export const OIDC_SCHEMA = {
+export type OIDCGroupClaimType = "scope" | "claim";
+
+export interface OIDCProviderConfig {
+  id: string;
+  /** Assigned by the server when the provider is first saved. Absent on a provider not yet saved. */
+  uid?: string;
+  label: string;
+  enable: boolean;
+  url: string;
+  clientId: string;
+  secretSet: boolean;
+  callback: string;
+  groupMappings: string;
+  groupClaimType: OIDCGroupClaimType;
+  groupClaimPath: string;
+  sslInsecure: boolean;
+  requireVerifiedEmail: boolean;
+}
+
+export const OIDC_PROVIDER_SCHEMA = {
+  label: { type: "str", default: "OIDC" },
   enable: { type: "bool", default: false },
   url: { type: "str", default: "" },
   clientId: { type: "str", default: "" },
   secret: { type: "str", default: "", omit: true, setFlag: "secretSet" },
   callback: { type: "str", default: "" },
   groupMappings: { type: "str", default: "" },
+  groupClaimType: { type: "str", default: "scope", oneOf: ["scope", "claim"] },
+  groupClaimPath: { type: "str", default: "" },
+  sslInsecure: { type: "bool", default: false },
+  requireVerifiedEmail: { type: "bool", default: true },
 } as const;
+
+export type OAuthProviderType = "github" | "gitlab" | "bitbucket" | "custom";
+
+export interface OAuthProviderConfig {
+  id: string;
+  /** Assigned by the server when the provider is first saved. Absent on a provider not yet saved. */
+  uid?: string;
+  label: string;
+  providerType: OAuthProviderType;
+  enable: boolean;
+  baseUrl: string;
+  clientId: string;
+  secretSet: boolean;
+  callback: string;
+  groupMappings: string;
+  authorizationUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
+  scope: string;
+  groupClaimPath: string;
+  requireVerifiedEmail: boolean;
+}
+
+export const OAUTH_PROVIDER_SCHEMA = {
+  label: { type: "str", default: "OAuth 2.0" },
+  providerType: { type: "str", default: "github", oneOf: ["github", "gitlab", "bitbucket", "custom"] },
+  enable: { type: "bool", default: false },
+  baseUrl: { type: "str", default: "" },
+  clientId: { type: "str", default: "" },
+  secret: { type: "str", default: "", omit: true, setFlag: "secretSet" },
+  callback: { type: "str", default: "" },
+  groupMappings: { type: "str", default: "" },
+  authorizationUrl: { type: "str", default: "" },
+  tokenUrl: { type: "str", default: "" },
+  userInfoUrl: { type: "str", default: "" },
+  scope: { type: "str", default: "" },
+  groupClaimPath: { type: "str", default: "" },
+  requireVerifiedEmail: { type: "bool", default: true },
+} as const;
+
+export const SIGN_IN_METHODS = ["local", "ldap", "oidc", "oauth"] as const;
+export type SignInMethod = (typeof SIGN_IN_METHODS)[number];
+
+export const SIGN_IN_METHOD_LABELS: Record<SignInMethod, string> = {
+  local: "Local",
+  ldap: "LDAP",
+  oidc: "OIDC",
+  oauth: "OAuth 2.0",
+};
+
+export type AuthConfig = {
+  local: LocalAuthConfig;
+  ldap: LDAPProviderConfig[];
+  oidc: OIDCProviderConfig[];
+  oauth: OAuthProviderConfig[];
+  defaultLoginProvider: string;
+};

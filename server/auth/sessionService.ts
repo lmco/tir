@@ -1,17 +1,15 @@
 import { randomBytes } from "crypto";
 import { H3Event, setCookie, getCookie } from "h3";
 import { DateTime } from "luxon";
-import { Session } from "~/db/models/session";
-import { User } from "~/db/models/user";
-import { UserRole } from "~/db/models/userRole";
+import { Session, User, UserRole } from "../../db/models";
 
 const SESSION_COOKIE_NAME = "tirsession";
-// TODO: Move constant to ENV? Config?
 const SESSION_EXPIRY_HOURS = 2;
+const SESSION_EXTEND_THRESHOLD_HOURS = SESSION_EXPIRY_HOURS / 2;
 
 export class SessionService {
   async createSession(UserId: number, event: H3Event, data: Record<string, any> = {}) {
-    this.deleteSessionsForUser(UserId);
+    await this.deleteSessionsForUser(UserId);
 
     const id = randomBytes(32).toString("hex");
     const expiresAt = DateTime.now().plus({ hours: SESSION_EXPIRY_HOURS }).toISO();
@@ -26,6 +24,8 @@ export class SessionService {
       loginTime: DateTime.now().toISO(),
     });
 
+    // A session cookie with no maxAge: the Session row is the only clock, so an
+    // extension written during server-side rendering needs no cookie to reach the browser.
     setCookie(event, SESSION_COOKIE_NAME, id, {
       httpOnly: true,
       path: "/",
@@ -37,7 +37,6 @@ export class SessionService {
   }
 
   async validateSession(event: H3Event) {
-    // TODO: Extend session on validation
     const id = getCookie(event, SESSION_COOKIE_NAME);
     if (!id) return null;
 
@@ -47,8 +46,15 @@ export class SessionService {
     });
 
     if (!session || DateTime.fromISO(session.expiresAt) < DateTime.now()) {
-      this.destroySession(id);
+      await this.destroySession(id);
       return null;
+    }
+
+    // Extend when less than half the lifetime remains limits DB writes for active users
+    const remaining = DateTime.fromISO(session.expiresAt).diff(DateTime.now(), "hours").hours;
+    if (remaining < SESSION_EXTEND_THRESHOLD_HOURS) {
+      const newExpiry = DateTime.now().plus({ hours: SESSION_EXPIRY_HOURS }).toISO();
+      await session.update({ expiresAt: newExpiry, lastUpdate: DateTime.now().toISO() });
     }
 
     return session;

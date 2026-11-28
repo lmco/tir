@@ -1,0 +1,168 @@
+import { Client, type Entry } from "ldapts";
+import { GroupClaimExtractor } from "~/server/auth/groupClaimExtractor";
+import {
+  UAC_ACCOUNT_DISABLED,
+  escapeFilter,
+  firstAttr,
+  allAttrs,
+  fallbackEmail,
+  ldapClientOptions,
+  startTlsIfNeeded,
+} from "~/server/auth/ldapUtils";
+import { loadAuthConfig, storedLDAPPassword } from "~/server/utils/config/authConfig";
+
+const CONNECT_TIMEOUT_MS = 10_000;
+
+function resolveRoleQuiet(groupMappings: string, groups: string[]): number | null {
+  const raw = (groupMappings || "").trim();
+  if (!raw) return null;
+  const extractor = new GroupClaimExtractor({
+    mode: "claim",
+    claimPath: "",
+    groupRoleMappings: GroupClaimExtractor.parseGroupMappings(raw, "|"),
+  });
+  const roleIds = extractor.getAllMatchingRoles(groups);
+  if (roleIds.includes(2)) return 2;
+  if (roleIds.includes(1)) return 1;
+  return null;
+}
+
+export default defineEventHandler(async (event) => {
+  await requireAdmin(event);
+
+  const body = await readBody(event);
+  const {
+    url,
+    bindDn,
+    password: providedBindPassword,
+    baseDn,
+    ssl,
+    sslInsecure,
+    sslCa,
+    template,
+    groupAttribute,
+    groupMappings,
+    username,
+    testPassword,
+  } = body;
+
+  if (!username || !testPassword) {
+    throw createError({ statusCode: 400, message: "Username and password are required." });
+  }
+  if (!url || !bindDn || !baseDn) {
+    throw createError({ statusCode: 400, message: "Provider configuration is incomplete." });
+  }
+
+  const bindPassword: string | undefined =
+    providedBindPassword || (await storedLDAPPassword(body));
+
+  if (!bindPassword) {
+    throw createError({
+      statusCode: 400,
+      message:
+        "Bind password is required - enter it in the Password field. The saved password only applies while the URL, bind DN and TLS settings are unchanged.",
+    });
+  }
+
+  const tlsConfig = { url, ssl, sslInsecure, sslCa };
+  const attr = groupAttribute || "memberOf";
+  const client = new Client(ldapClientOptions(tlsConfig, CONNECT_TIMEOUT_MS));
+
+  // The saved provider decides the address a real login would make up for an entry with no mail.
+  const saved = (await loadAuthConfig()).ldap.find((p) => p.id === body.id);
+  const fallbackConfig = {
+    id: typeof body.id === "string" && body.id ? body.id : "unsaved",
+    uid: saved?.uid,
+    fallbackEmailDomain: saved?.fallbackEmailDomain,
+  };
+
+  try {
+    await startTlsIfNeeded(client, tlsConfig);
+    await client.bind(bindDn, bindPassword);
+
+    let ldapUser: Entry;
+
+    if (template === "msad") {
+      const escaped = escapeFilter(username);
+      const { searchEntries } = await client.search(baseDn, {
+        scope: "sub",
+        filter: `(|(sAMAccountName=${escaped})(userPrincipalName=${escaped}))`,
+        attributes: [
+          "dn",
+          "sAMAccountName",
+          "userPrincipalName",
+          "displayName",
+          "givenName",
+          "sn",
+          "mail",
+          "userAccountControl",
+          attr,
+        ],
+      });
+
+      if (searchEntries.length !== 1) {
+        throw createError({
+          statusCode: 404,
+          message: `User not found or not unique: ${username}`,
+        });
+      }
+
+      ldapUser = searchEntries[0] as Entry;
+
+      const uac = Number.parseInt(ldapUser.userAccountControl as string, 10);
+      if (!Number.isNaN(uac) && uac & UAC_ACCOUNT_DISABLED) {
+        throw createError({ statusCode: 403, message: "Account is disabled in Active Directory." });
+      }
+    } else {
+      const { searchEntries } = await client.search(baseDn, {
+        scope: "sub",
+        filter: `(uid=${escapeFilter(username)})`,
+        attributes: ["dn", "cn", "sn", "givenName", "mail", attr],
+      });
+
+      if (searchEntries.length !== 1) {
+        throw createError({
+          statusCode: 404,
+          message: `User not found or not unique: ${username}`,
+        });
+      }
+
+      ldapUser = searchEntries[0] as Entry;
+    }
+
+    await client.bind(ldapUser.dn, testPassword);
+
+    const groups = allAttrs(ldapUser[attr]).map((g) => g.toLowerCase());
+
+    const userRoleId = resolveRoleQuiet(groupMappings, groups);
+    const denied = (groupMappings || "").trim().length > 0 && userRoleId === null;
+
+    let email: string;
+    let firstName: string;
+    let lastName: string;
+
+    if (template === "msad") {
+      const displayName = firstAttr(ldapUser.displayName);
+      firstName = firstAttr(ldapUser.givenName) || displayName.split(" ")[0] || username;
+      lastName = firstAttr(ldapUser.sn) || displayName.split(" ").slice(1).join(" ") || "Unknown";
+      email = firstAttr(ldapUser.mail) || firstAttr(ldapUser.userPrincipalName);
+      if (!email?.includes("@")) {
+        email = fallbackEmail(firstAttr(ldapUser.sAMAccountName) || username, fallbackConfig);
+      }
+    } else {
+      firstName = firstAttr(ldapUser.givenName, username);
+      lastName = firstAttr(ldapUser.sn, "Unknown");
+      const mails = allAttrs(ldapUser.mail).filter(Boolean);
+      email = mails.length ? mails[0] : fallbackEmail(username, fallbackConfig);
+    }
+
+    return { ok: true, email, firstName, lastName, groups, userRoleId, denied };
+  } catch (err: any) {
+    if (err.statusCode) throw err;
+    throw createError({ statusCode: 401, message: err.message ?? "Authentication failed." });
+  } finally {
+    try {
+      await client.unbind();
+    } catch {}
+  }
+});

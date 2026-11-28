@@ -1,37 +1,45 @@
-import { defineEventHandler, setCookie, sendRedirect } from "h3";
+import { defineEventHandler, getQuery, setCookie, sendRedirect, setResponseHeader } from "h3";
 import { getAuthServiceManager } from "~/server/auth/authServiceManager";
-
-function clearCookie(event: any, name: string) {
-  setCookie(event, name, "", {
-    path: "/",
-    expires: new Date(0),
-  });
-}
+import { AUTH_COOKIES, LOGIN_COOKIE_OPTIONS, clearLoginCookies } from "~/server/utils/authCookies";
+import { testResultPage } from "~/server/utils/testResultPage";
 
 export default defineEventHandler(async (event) => {
   try {
-    clearCookie(event, "pkce_code_verifier");
-    clearCookie(event, "pkce_state");
+    clearLoginCookies(event);
 
-    const auth = getAuthServiceManager();
-    const result = await auth.authenticate("oidc", event, {});
+    const authService = getAuthServiceManager();
+    const query = getQuery(event);
+    // Test Login returns the profile and the role the mappings would grant, which is for Admins.
+    if (query.test === "true") await requireAdmin(event);
+
+    let providerId = query.provider as string | undefined;
+    if (!providerId) {
+      const enabled = authService.getEnabledOIDCProviders();
+      if (enabled.length === 0) throw new Error("No OIDC providers are enabled.");
+      if (enabled.length > 1) throw new Error("Multiple OIDC providers are enabled -- specify ?provider=<id>.");
+      providerId = enabled[0].id;
+    }
+
+    const result = await authService.authenticate(`oidc:${providerId}`, event, {});
+
     if (result.redirect) {
-      await setCookie(event, "pkce_code_verifier", event.context.auth.codeVerifier, {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-      });
-      await setCookie(event, "pkce_state", event.context.auth.state, {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-      });
-
-      // redirect to the OIDC provider
+      setCookie(event, AUTH_COOKIES.STATE, event.context.auth.state, LOGIN_COOKIE_OPTIONS);
+      setCookie(event, AUTH_COOKIES.NONCE, event.context.auth.nonce, LOGIN_COOKIE_OPTIONS);
+      setCookie(event, AUTH_COOKIES.CODE_VERIFIER, event.context.auth.codeVerifier, LOGIN_COOKIE_OPTIONS);
+      if (query.test === "true") {
+        setCookie(event, AUTH_COOKIES.TEST_MODE, "1", { ...LOGIN_COOKIE_OPTIONS, maxAge: 300 });
+      }
       return sendRedirect(event, result.redirect);
     }
+
     return { success: true, message: "Redirecting to OIDC provider..." };
-  } catch (error) {
+  } catch (error: any) {
+    // Only enabled providers are loaded, so a test of a disabled or unsaved one fails here.
+    // The popup has to report that, or the admin page waits for a result that never comes.
+    if (getQuery(event).test === "true") {
+      setResponseHeader(event, "Content-Type", "text/html");
+      return testResultPage({ error: error.message });
+    }
     return { success: false, message: error.message };
   }
 });

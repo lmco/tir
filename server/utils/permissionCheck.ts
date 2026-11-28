@@ -1,13 +1,9 @@
-import { Op } from "sequelize";
+/* eslint-disable camelcase */
 import {
-  EvaluationItem,
   System,
-  Milestone,
   Boundary,
   User,
   Boundary_User,
-  NessusPlugin_Boundary,
-  BoundaryRole,
   Tier,
   Tier_User,
 } from "../../db/models";
@@ -108,4 +104,12 @@ export async function userCheck(
 
   const checkResults = { user, UserRoleId: user?.UserRoleId, BoundaryRoleId, TierRoleId };
   return checkResults;
+}
+
+export async function requireAdmin(event: any) {
+  const checkResult = await userCheck(event);
+  if (checkResult.UserRoleId !== 1) {
+    throw createError({ statusCode: 403, statusMessage: "Administrator role required." });
+  }
+  return checkResult;
 }

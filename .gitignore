@@ -30,7 +30,7 @@ tmp
 /data/
 
 # internal test
-test
+/test/
 server/api/localtest
 
 # Vitest reports and artifacts
